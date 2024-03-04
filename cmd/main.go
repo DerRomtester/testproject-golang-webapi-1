@@ -1,18 +1,19 @@
 package main
 
 import (
-    "fmt"
-    "context"
-    "log"
-    "encoding/json"
-    "net/http"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type Root struct {
-	Devices []struct {
-		ID                              string `json:"id"`
+type Device struct {
+		ID                              string `bson:"_id,omitempty"`
 		Name                            string `json:"name"`
 		DeviceTypeID                    string `json:"deviceTypeId"`
 		Failsafe                        bool   `json:"failsafe"`
@@ -27,7 +28,10 @@ type Root struct {
 		PositionAxisNumber              int    `json:"positionAxisNumber"`
 		AdvancedEnvironmentalConditions bool   `json:"advancedEnvironmentalConditions,omitempty"`
 		TerminalElement                 bool   `json:"terminalElement,omitempty"`
-	} `json:"devices"`
+}
+
+type Root struct {
+	Devices []Device `json:"devices"`
 }
 
 const (
@@ -43,64 +47,78 @@ const (
 	MongoURI      = "mongodb://localhost:27017"
 )
 
-var MongoDb = *Mongo_ConnectDB()
-
-func Mongo_ConnectDB() *mongo.Client {
-
+func Mongo_ConnectDB() (*mongo.Client, error) {
     	mongoURI := MongoURI
     	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
-		log.Fatal(err)
-		panic(err)
+		return nil, err
 	}
-	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			log.Fatal(err)
-			panic(err)
-		}
-	}()
-	fmt.Println("Connected to MongoDb")
-	return client
-}
-
-func Mongo_WriteDevices(devices Root, c* mongo.Client) {
-	collection := c.Database("devices-db").Collection("Devices")
-	docs := []interface{}{
-		devices.Devices,
-	}
-	fmt.Print(docs...)
-	result, err := collection.InsertMany(context.TODO(), docs)
+	
+	err = client.Ping(context.Background(), nil)
 	if err != nil {
-		log.Fatal(err)
-		panic(err)
+		return nil, err
 	}
 
-	fmt.Printf("Documents inserted: %v\n", len(result.InsertedIDs))
-
-	for _, id := range result.InsertedIDs {
-		fmt.Printf("Inserted document with _id: %v\n", id)
-	}
+	fmt.Println("Connected to MongoDb")
+	return client, nil
 }
 
-func PostDevicesHandler(w http.ResponseWriter, r *http.Request) {
+func Mongo_WriteDevices(devices Root, c* mongo.Client) error {
+	collection := c.Database("devices-db").Collection("Devices")
+
+	for _, device := range devices.Devices {
+		filter := bson.D{{"_id", device.ID}}
+		var existingDevice Device
+		err := collection.FindOne(context.Background(), filter).Decode(&existingDevice)
+		if err == nil {
+			update := bson.D{{"$set", bson.M{"name": device.Name}}}
+			_, err := collection.UpdateOne(context.Background(), filter, update)
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err := collection.InsertOne(context.Background(), device)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func PostDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("Access-Control-Allow-Origin", "*")
+
     var devices Root
+    
     if r.Method != MethodPost {
 	    http.Error(w, "" , http.StatusMethodNotAllowed)
 	    return
     }
+
     err := json.NewDecoder(r.Body).Decode(&devices)
 
     if err != nil {
 	http.Error(w, err.Error(), http.StatusBadRequest)
 	return
     }
-    Mongo_WriteDevices(devices, &MongoDb)
-    fmt.Fprintf(w, "Devices: %+v", devices.Devices[0].ID)
+
+    if err := Mongo_WriteDevices(devices, client); err != nil {
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+	return
+    }
 }
 
 func main() {
-    	http.HandleFunc("/postDevices", PostDevicesHandler)
+	client, err := Mongo_ConnectDB()
+	if err != nil {
+		log.Fatal("Error connecting to MongoDB: %v\n", err)
+	}
+	defer client.Disconnect(context.Background())
+
+	http.HandleFunc("/postDevices", func(w http.ResponseWriter, r *http.Request) {
+		PostDevicesHandler(w, r, client)
+	})
     	http.ListenAndServe(":8080", nil)
 }
