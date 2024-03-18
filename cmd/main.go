@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -33,10 +33,6 @@ type Device struct {
 	PositionAxisNumber              int    `json:"positionAxisNumber"`
 	AdvancedEnvironmentalConditions bool   `json:"advancedEnvironmentalConditions,omitempty"`
 	TerminalElement                 bool   `json:"terminalElement,omitempty"`
-}
-
-type httpMessage struct {
-	msg string `json:"message"`
 }
 
 const (
@@ -114,11 +110,11 @@ func Mongo_WriteDevices(devices Root, c *mongo.Client) error {
 	collection := c.Database("devices-db").Collection("Devices")
 
 	for _, device := range devices.Devices {
-		filter := bson.D{{"_id", device.ID}}
+		filter := bson.D{primitive.E{Key: "_id", Value: device.ID}}
 		var existingDevice Device
 		err := collection.FindOne(context.Background(), filter).Decode(&existingDevice)
 		if err == nil {
-			update := bson.D{{"$set", bson.M{"name": device.Name}}}
+			update := bson.D{primitive.E{Key: "$set", Value: bson.M{"name": device.Name}}}
 			_, err := collection.UpdateOne(context.Background(), filter, update)
 			if err != nil {
 				return err
@@ -169,7 +165,7 @@ func GetDeviceByIDHandler(w http.ResponseWriter, r *http.Request, client *mongo.
 		return
 	}
 	var devices Root
-	devices, err := Mongo_GetDevice(bson.D{{"_id", id}}, client)
+	devices, err := Mongo_GetDevice(primitive.D{{Key: "_id", Value: id}}, client)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -195,7 +191,7 @@ func DeleteDeviceHandler(w http.ResponseWriter, r *http.Request, client *mongo.C
 		http.Error(w, "", http.StatusMethodNotAllowed)
 		return
 	}
-	err := Mongo_DeleteDevice(bson.D{{"_id", id}}, client)
+	err := Mongo_DeleteDevice(primitive.D{{Key: "_id", Value: id}}, client)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -244,7 +240,7 @@ func PostDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 func main() {
 	client, err := Mongo_ConnectDB("mongodb://localhost:27017")
 	if err != nil {
-		log.Fatal("Error connecting to MongoDB: %v\n", err)
+		fmt.Printf("Error connecting to MongoDB: %v\n", err)
 	}
 	defer client.Disconnect(context.Background())
 	http.HandleFunc("/postDevices", func(w http.ResponseWriter, r *http.Request) {
