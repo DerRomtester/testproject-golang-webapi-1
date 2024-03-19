@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -42,6 +43,11 @@ const (
 	MethodDelete = "DELETE"
 )
 
+var (
+	client *mongo.Client
+	err    error
+)
+
 func Mongo_ConnectDB(mongoURI string) (*mongo.Client, error) {
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
@@ -59,9 +65,21 @@ func Mongo_ConnectDB(mongoURI string) (*mongo.Client, error) {
 	return client, nil
 }
 
+func MongoClientStatus(client *mongo.Client) error {
+	if client == nil {
+		return errors.New("error: no client connection to database")
+	}
+	return nil
+}
+
 func Mongo_GetDevice(filter bson.D, c *mongo.Client) (Root, error) {
-	collection := c.Database("devices-db").Collection("Devices")
 	var devices Root
+	err := MongoClientStatus(client)
+	if err != nil {
+		return devices, err
+	}
+
+	collection := c.Database("devices-db").Collection("Devices")
 	cursor, err := collection.Find(context.Background(), filter)
 	if err != nil {
 		return devices, err
@@ -84,13 +102,18 @@ func Mongo_GetDevice(filter bson.D, c *mongo.Client) (Root, error) {
 }
 
 func Mongo_DeleteDevice(filter bson.D, c *mongo.Client) error {
+	err := MongoClientStatus(client)
+	if err != nil {
+		return err
+	}
+
 	collection := c.Database("devices-db").Collection("Devices")
 	if filter == nil {
 		err := errors.New("{\"error\":\"device id must be specified\"}")
 		return err
 	}
 
-	_, err := collection.DeleteMany(context.TODO(), filter)
+	_, err = collection.DeleteMany(context.TODO(), filter)
 	if err != nil {
 		return err
 	}
@@ -98,8 +121,13 @@ func Mongo_DeleteDevice(filter bson.D, c *mongo.Client) error {
 }
 
 func Mongo_DeleteAllDevices(filter bson.D, c *mongo.Client) error {
+	err := MongoClientStatus(client)
+	if err != nil {
+		return err
+	}
+
 	collection := c.Database("devices-db").Collection("Devices")
-	_, err := collection.DeleteMany(context.TODO(), filter)
+	_, err = collection.DeleteMany(context.TODO(), filter)
 	if err != nil {
 		return err
 	}
@@ -107,8 +135,12 @@ func Mongo_DeleteAllDevices(filter bson.D, c *mongo.Client) error {
 }
 
 func Mongo_WriteDevices(devices Root, c *mongo.Client) error {
-	collection := c.Database("devices-db").Collection("Devices")
+	err := MongoClientStatus(client)
+	if err != nil {
+		return err
+	}
 
+	collection := c.Database("devices-db").Collection("Devices")
 	for _, device := range devices.Devices {
 		filter := bson.D{primitive.E{Key: "_id", Value: device.ID}}
 		var existingDevice Device
@@ -129,134 +161,208 @@ func Mongo_WriteDevices(devices Root, c *mongo.Client) error {
 	return nil
 }
 
-func GetDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if r.Method != MethodGet {
-		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
-		return
-	}
-	var devices Root
-	devices, err := Mongo_GetDevice(bson.D{{}}, client)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	alldevices, err := json.Marshal(devices)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Write(alldevices)
-}
-
-func GetDeviceByIDHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	id := r.URL.Query().Get("id")
-	if id == "" {
-
-		http.Error(w, "{\"error\":\"device id must be specified\"}", http.StatusBadRequest)
-		return
-	}
-
-	if r.Method != MethodGet {
-		http.Error(w, "", http.StatusMethodNotAllowed)
-		return
-	}
-	var devices Root
-	devices, err := Mongo_GetDevice(primitive.D{{Key: "_id", Value: id}}, client)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	singledevice, err := json.Marshal(devices)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Write(singledevice)
-}
-
-func DeleteDeviceHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		http.Error(w, "{\"error\":\"device id must be specified\"}", http.StatusBadRequest)
-		return
-	}
-
-	if r.Method != MethodDelete {
-		http.Error(w, "", http.StatusMethodNotAllowed)
-		return
-	}
-	err := Mongo_DeleteDevice(primitive.D{{Key: "_id", Value: id}}, client)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func DeleteAllDeviceHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	if r.Method != MethodPut {
-		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
-		return
-	}
-	err := Mongo_DeleteAllDevices(bson.D{{}}, client)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func PostDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	var devices Root
 
 	if r.Method != MethodPost {
 		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
 		return
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&devices)
+	client, err = Mongo_ConnectDB("mongodb://localhost:27017")
+	if err != nil {
+		log.Fatal("Error connecting to MongoDB: %v\n", err)
+	}
+}
+
+func LogoutHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != MethodPost {
+		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		return errors.New("{\"error\":\"method not allowed\"}")
+	}
+
+	err := MongoClientStatus(client)
+	if err != nil {
+		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
+		return err
+	}
+
+	client.Disconnect(context.TODO())
+	return nil
+}
+
+func GetDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != MethodGet {
+		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		return err
+	}
+
+	err := MongoClientStatus(client)
+	if err != nil {
+		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
+		return err
+	}
+
+	var devices Root
+	devices, err = Mongo_GetDevice(bson.D{{}}, client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+	alldevices, err := json.Marshal(devices)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+	w.Write(alldevices)
+	return nil
+}
+
+func GetDeviceByIDHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != MethodGet {
+		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		return nil
+	}
+
+	var devices Root
+	err := MongoClientStatus(client)
+	if err != nil {
+		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
+		return err
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "{\"error\":\"device id must be specified\"}", http.StatusBadRequest)
+		return nil
+	}
+
+	devices, err = Mongo_GetDevice(primitive.D{{Key: "_id", Value: id}}, client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+	singledevice, err := json.Marshal(devices)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+	w.Write(singledevice)
+	return nil
+}
+
+func DeleteSingleDeviceHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != MethodDelete {
+		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		return nil
+	}
+
+	err := MongoClientStatus(client)
+	if err != nil {
+		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
+		return err
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "{\"error\":\"device id must be specified\"}", http.StatusBadRequest)
+		return nil
+	}
+
+	err = Mongo_DeleteDevice(primitive.D{{Key: "_id", Value: id}}, client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil
+	}
+	return nil
+}
+
+func DeleteAllDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != MethodPut {
+		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		return err
+	}
+
+	err := MongoClientStatus(client)
+	if err != nil {
+		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
+		return err
+	}
+
+	err = Mongo_DeleteAllDevices(bson.D{{}}, client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+	return nil
+}
+
+func PostDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var devices Root
+	if r.Method != MethodPost {
+		http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		return nil
+	}
+
+	err := MongoClientStatus(client)
+	if err != nil {
+		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
+		return err
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&devices)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil
 	}
 
 	if err := Mongo_WriteDevices(devices, client); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil
 	}
+	return nil
 }
 
 func main() {
-	client, err := Mongo_ConnectDB("mongodb://localhost:27017")
-	if err != nil {
-		fmt.Printf("Error connecting to MongoDB: %v\n", err)
-	}
-	defer client.Disconnect(context.Background())
-	http.HandleFunc("/postDevices", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		LoginHandler(w, r)
+	})
+	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
+		LogoutHandler(w, r, client)
+	})
+	http.HandleFunc("/createdevice", func(w http.ResponseWriter, r *http.Request) {
 		PostDevicesHandler(w, r, client)
 	})
-	http.HandleFunc("/getDevices", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/getdevices", func(w http.ResponseWriter, r *http.Request) {
 		GetDevicesHandler(w, r, client)
 	})
-	http.HandleFunc("/getDevice", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/getdevicebyid", func(w http.ResponseWriter, r *http.Request) {
 		GetDeviceByIDHandler(w, r, client)
 	})
-	http.HandleFunc("/deleteDevice", func(w http.ResponseWriter, r *http.Request) {
-		DeleteDeviceHandler(w, r, client)
+	http.HandleFunc("/deletedevice", func(w http.ResponseWriter, r *http.Request) {
+		DeleteSingleDeviceHandler(w, r, client)
 	})
-	http.HandleFunc("/deleteAllDevices", func(w http.ResponseWriter, r *http.Request) {
-		DeleteAllDeviceHandler(w, r, client)
+	http.HandleFunc("/cleardevices", func(w http.ResponseWriter, r *http.Request) {
+		DeleteAllDevicesHandler(w, r, client)
 	})
-	http.ListenAndServe(":8080", nil)
+
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
