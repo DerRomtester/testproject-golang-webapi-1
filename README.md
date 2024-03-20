@@ -81,7 +81,7 @@ $ go run cmd/main.go
 ```
 
 
-Made with :heart: by <a href="https://github.com/{{YOUR_GITHUB_USERNAME}}" target="_blank">{{YOUR_NAME}}</a>
+Made with :heart: by <a href="https://github.com/DerRomtester" target="_blank">DerRomtester</a>
 
 &#xa0;
 
