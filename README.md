@@ -1,18 +1,18 @@
 <div align="center" id="top"> 
-  <img src="./.github/app.gif" alt="Grollmos Golang" />
+  <img src="./.github/app.gif" alt="Grollmus Golang" />
 
   &#xa0;
 
   <!-- <a href="https://grollmosgolang.netlify.app">Demo</a> -->
 </div>
 
-<h1 align="center">Grollmos Golang</h1>
+<h1 align="center">Grollmus Golang</h1>
 
 <p align="center">
   <img alt="Github top language" src="https://img.shields.io/github/languages/top/DerRomtester/testproject-golang-webapi-1
 ?color=56BEB8">
 
-  <img alt="Github language count" src="https://img.shields.io/github/languages/count/testproject-golang-webapi-1?color=56BEB8">
+  <img alt="Github language count" src="https://img.shields.io/github/languages/count/DerRomtester/testproject-golang-webapi-1?color=56BEB8">
 
   <img alt="Repository size" src="https://img.shields.io/github/repo-size/DerRomtester/testproject-golang-webapi-1?color=56BEB8">
 
@@ -47,7 +47,7 @@
 
 ## :dart: About ##
 
-Describe your project
+A small sample REST API project i found from grollmus
 
 ## :sparkles: Features ##
 
@@ -59,37 +59,26 @@ Describe your project
 
 The following tools were used in this project:
 
-- [Expo](https://expo.io/)
-- [Node.js](https://nodejs.org/en/)
-- [React](https://pt-br.reactjs.org/)
-- [React Native](https://reactnative.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
+- [Go](https://go.dev/)
 
 ## :white_check_mark: Requirements ##
 
-Before starting :checkered_flag:, you need to have [Git](https://git-scm.com) and [Node](https://nodejs.org/en/) installed.
+Before starting :checkered_flag:, you need to have [Git](https://git-scm.com) and [Go](https://go.dev) installed.
 
 ## :checkered_flag: Starting ##
 
 ```bash
 # Clone this project
-$ git clone https://github.com/DerRomtester/testproject-golang-webapi-1
+$ git clone https://github.com/DerRomtester/testproject-golang-webapi-1.git
 
 # Access
-$ cd grollmos-golang
-
-# Install dependencies
-$ yarn
+$ cd testproject-golang-webapi
 
 # Run the project
-$ yarn start
+$ go run cmd/main.go
 
-# The server will initialize in the <http://localhost:3000>
+# The server will initialize in the <http://localhost:8080>
 ```
-
-## :memo: License ##
-
-This project is under license from MIT. For more details, see the [LICENSE](LICENSE.md) file.
 
 
 Made with :heart: by <a href="https://github.com/{{YOUR_GITHUB_USERNAME}}" target="_blank">{{YOUR_NAME}}</a>
