@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -36,6 +38,22 @@ type Device struct {
 	TerminalElement                 bool   `json:"terminalElement,omitempty"`
 }
 
+type Credentials struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
+var sessions = map[string]session{}
+
+type session struct {
+	username string
+	expiry   time.Time
+}
+
+func (s session) isExpired() bool {
+	return s.expiry.Before(time.Now())
+}
+
 const (
 	MethodGet    = "GET"
 	MethodPost   = "POST"
@@ -43,12 +61,17 @@ const (
 	MethodDelete = "DELETE"
 )
 
+var users = map[string]string{
+	"user1": "password1",
+	"user2": "password2",
+}
+
 var (
 	client *mongo.Client
 	err    error
 )
 
-func Mongo_ConnectDB(mongoURI string) (*mongo.Client, error) {
+func ConnectDB(mongoURI string) (*mongo.Client, error) {
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		fmt.Println("Error connecting to database")
@@ -65,16 +88,16 @@ func Mongo_ConnectDB(mongoURI string) (*mongo.Client, error) {
 	return client, nil
 }
 
-func MongoClientStatus(client *mongo.Client) error {
+func ClientStatusDB(client *mongo.Client) error {
 	if client == nil {
 		return errors.New("error: no client connection to database")
 	}
 	return nil
 }
 
-func Mongo_GetDevice(filter bson.D, c *mongo.Client) (Root, error) {
+func GetDeviceDB(filter bson.D, c *mongo.Client) (Root, error) {
 	var devices Root
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		return devices, err
 	}
@@ -101,8 +124,8 @@ func Mongo_GetDevice(filter bson.D, c *mongo.Client) (Root, error) {
 	return devices, nil
 }
 
-func Mongo_DeleteDevice(filter bson.D, c *mongo.Client) error {
-	err := MongoClientStatus(client)
+func DeleteDeviceDB(filter bson.D, c *mongo.Client) error {
+	err := ClientStatusDB(client)
 	if err != nil {
 		return err
 	}
@@ -120,8 +143,8 @@ func Mongo_DeleteDevice(filter bson.D, c *mongo.Client) error {
 	return nil
 }
 
-func Mongo_DeleteAllDevices(filter bson.D, c *mongo.Client) error {
-	err := MongoClientStatus(client)
+func DeleteDevicesDB(filter bson.D, c *mongo.Client) error {
+	err := ClientStatusDB(client)
 	if err != nil {
 		return err
 	}
@@ -135,7 +158,7 @@ func Mongo_DeleteAllDevices(filter bson.D, c *mongo.Client) error {
 }
 
 func Mongo_WriteDevices(devices Root, c *mongo.Client) error {
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		return err
 	}
@@ -170,10 +193,113 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err = Mongo_ConnectDB("mongodb://localhost:27017")
+	var creds Credentials
+	// Get the JSON body and decode into credentials
+	err := json.NewDecoder(r.Body).Decode(&creds)
+	if err != nil {
+		// If the structure of the body is wrong, return an HTTP error
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Get the expected password from our in memory map
+	expectedPassword, ok := users[creds.Username]
+
+	// If a password exists for the given user
+	// AND, if it is the same as the password we received, the we can move ahead
+	// if NOT, then we return an "Unauthorized" status
+	if !ok || expectedPassword != creds.Password {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	sessionToken := uuid.NewString()
+	expiresAt := time.Now().Add(120 * time.Second)
+
+	sessions[sessionToken] = session{
+		username: creds.Username,
+		expiry:   expiresAt,
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:    "session_token",
+		Value:   sessionToken,
+		Expires: expiresAt,
+	})
+
+	client, err = ConnectDB("mongodb://localhost:27017")
 	if err != nil {
 		log.Fatal("Error connecting to MongoDB: %v\n", err)
 	}
+}
+
+func CheckSessionHandler(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sessionToken := c.Value
+	userSession, exists := sessions[sessionToken]
+	if !exists {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if userSession.isExpired() {
+		delete(sessions, sessionToken)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("Authorized %s", userSession.username)))
+}
+
+func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sessionToken := c.Value
+
+	userSession, exists := sessions[sessionToken]
+	if !exists {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if userSession.isExpired() {
+		delete(sessions, sessionToken)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	// (END) The code until this point is the same as the first part of the `Welcome` route
+
+	// If the previous session is valid, create a new session token for the current user
+	newSessionToken := uuid.NewString()
+	expiresAt := time.Now().Add(120 * time.Second)
+
+	// Set the token in the session map, along with the user whom it represents
+	sessions[newSessionToken] = session{
+		username: userSession.username,
+		expiry:   expiresAt,
+	}
+
+	// Delete the older session token
+	delete(sessions, sessionToken)
+
+	// Set the new token as the users `session_token` cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:    "session_token",
+		Value:   newSessionToken,
+		Expires: time.Now().Add(120 * time.Second),
+	})
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
@@ -185,7 +311,29 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client)
 		return errors.New("{\"error\":\"method not allowed\"}")
 	}
 
-	err := MongoClientStatus(client)
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			// If the cookie is not set, return an unauthorized status
+			w.WriteHeader(http.StatusUnauthorized)
+			return err
+		}
+		// For any other type of error, return a bad request status
+		w.WriteHeader(http.StatusBadRequest)
+		return err
+	}
+	sessionToken := c.Value
+
+	// remove the users session from the session map
+	delete(sessions, sessionToken)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:    "session_token",
+		Value:   "",
+		Expires: time.Now(),
+	})
+
+	err = ClientStatusDB(client)
 	if err != nil {
 		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
 		return err
@@ -204,14 +352,14 @@ func GetDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		return err
 	}
 
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
 		return err
 	}
 
 	var devices Root
-	devices, err = Mongo_GetDevice(bson.D{{}}, client)
+	devices, err = GetDeviceDB(bson.D{{}}, client)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return err
@@ -234,7 +382,7 @@ func GetDeviceByIDHandler(w http.ResponseWriter, r *http.Request, client *mongo.
 	}
 
 	var devices Root
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
 		return err
@@ -246,7 +394,7 @@ func GetDeviceByIDHandler(w http.ResponseWriter, r *http.Request, client *mongo.
 		return nil
 	}
 
-	devices, err = Mongo_GetDevice(primitive.D{{Key: "_id", Value: id}}, client)
+	devices, err = GetDeviceDB(primitive.D{{Key: "_id", Value: id}}, client)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return err
@@ -260,7 +408,7 @@ func GetDeviceByIDHandler(w http.ResponseWriter, r *http.Request, client *mongo.
 	return nil
 }
 
-func DeleteSingleDeviceHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func DeleteDeviceHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method != MethodDelete {
@@ -268,7 +416,7 @@ func DeleteSingleDeviceHandler(w http.ResponseWriter, r *http.Request, client *m
 		return nil
 	}
 
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
 		return err
@@ -279,7 +427,7 @@ func DeleteSingleDeviceHandler(w http.ResponseWriter, r *http.Request, client *m
 		return nil
 	}
 
-	err = Mongo_DeleteDevice(primitive.D{{Key: "_id", Value: id}}, client)
+	err = DeleteDeviceDB(primitive.D{{Key: "_id", Value: id}}, client)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return nil
@@ -287,7 +435,7 @@ func DeleteSingleDeviceHandler(w http.ResponseWriter, r *http.Request, client *m
 	return nil
 }
 
-func DeleteAllDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func DeleteDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method != MethodPut {
@@ -295,13 +443,13 @@ func DeleteAllDevicesHandler(w http.ResponseWriter, r *http.Request, client *mon
 		return err
 	}
 
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
 		return err
 	}
 
-	err = Mongo_DeleteAllDevices(bson.D{{}}, client)
+	err = DeleteDevicesDB(bson.D{{}}, client)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return err
@@ -309,7 +457,7 @@ func DeleteAllDevicesHandler(w http.ResponseWriter, r *http.Request, client *mon
 	return nil
 }
 
-func PostDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func UpsertDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var devices Root
@@ -318,7 +466,7 @@ func PostDevicesHandler(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 		return nil
 	}
 
-	err := MongoClientStatus(client)
+	err := ClientStatusDB(client)
 	if err != nil {
 		http.Error(w, "{\"error\":\"client not authenticated\"}", http.StatusUnauthorized)
 		return err
@@ -345,20 +493,33 @@ func main() {
 	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
 		LogoutHandler(w, r, client)
 	})
-	http.HandleFunc("/createdevice", func(w http.ResponseWriter, r *http.Request) {
-		PostDevicesHandler(w, r, client)
+	http.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == MethodGet {
+			GetDevicesHandler(w, r, client)
+		} else if r.Method == MethodPost {
+			UpsertDevicesHandler(w, r, client)
+		} else if r.Method == MethodPut {
+			DeleteDevicesHandler(w, r, client)
+		} else {
+			http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		}
 	})
-	http.HandleFunc("/getdevices", func(w http.ResponseWriter, r *http.Request) {
-		GetDevicesHandler(w, r, client)
+	http.HandleFunc("/device", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == MethodGet {
+			GetDeviceByIDHandler(w, r, client)
+		} else if r.Method == MethodDelete {
+			DeleteDeviceHandler(w, r, client)
+		} else {
+			http.Error(w, "{\"error\":\"method not allowed\"}", http.StatusMethodNotAllowed)
+		}
+
 	})
-	http.HandleFunc("/getdevicebyid", func(w http.ResponseWriter, r *http.Request) {
-		GetDeviceByIDHandler(w, r, client)
+
+	http.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
+		CheckSessionHandler(w, r)
 	})
-	http.HandleFunc("/deletedevice", func(w http.ResponseWriter, r *http.Request) {
-		DeleteSingleDeviceHandler(w, r, client)
-	})
-	http.HandleFunc("/cleardevices", func(w http.ResponseWriter, r *http.Request) {
-		DeleteAllDevicesHandler(w, r, client)
+	http.HandleFunc("/refresh", func(w http.ResponseWriter, r *http.Request) {
+		RefreshTokenHandler(w, r)
 	})
 
 	err := http.ListenAndServe(":8080", nil)
