@@ -6,3 +6,4 @@ run:
 
 clean: 
 	rm bin/main
+	go clean
