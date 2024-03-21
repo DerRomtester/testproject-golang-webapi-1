@@ -71,12 +71,16 @@ Before starting :checkered_flag:, you need to have [Git](https://git-scm.com) an
 $ git clone https://github.com/DerRomtester/testproject-golang-webapi-1.git
 
 # Access
-$ cd testproject-golang-webapi
+$ cd testproject-golang-webapi-1
 
-# Run the project
-$ go run cmd/main.go
-
+# Run the project 
 # The server will initialize in the <http://localhost:8080>
+$ make run
+
+# Build the Binary
+$ mkdir bin
+$ make build
+
 ```
 
 
