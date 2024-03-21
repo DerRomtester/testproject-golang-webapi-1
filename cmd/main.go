@@ -33,8 +33,8 @@ func main() {
 		default:
 			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
 		}
-
 	})
+
 	http.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case MethodGet:
@@ -46,17 +46,17 @@ func main() {
 		default:
 			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
 		}
-
 	})
+
 	http.HandleFunc("/device", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == MethodGet {
+		switch r.Method {
+		case MethodGet:
 			handler.HandleGetDeviceByID(w, r, client)
-		} else if r.Method == MethodDelete {
+		case MethodDelete:
 			handler.HandleDeleteDevice(w, r, client)
-		} else {
+		default:
 			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
 		}
-
 	})
 
 	http.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
@@ -66,8 +66,8 @@ func main() {
 		default:
 			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
 		}
-
 	})
+
 	http.HandleFunc("/refresh", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case MethodPut:
