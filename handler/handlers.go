@@ -79,6 +79,30 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) *mongo.Client {
 	return client
 }
 
+func CheckAuth(r *http.Request) (model.APIError, bool) {
+	var ErrorMsg model.APIError
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			ErrorMsg.Err = "session does not exist"
+			return ErrorMsg, false
+		}
+		return ErrorMsg, false
+	}
+	sessionToken := c.Value
+	userSession, exists := sessions[sessionToken]
+	if !exists {
+		ErrorMsg.Err = "session does not exist"
+		return ErrorMsg, false
+	}
+	if userSession.isExpired() {
+		delete(sessions, sessionToken)
+		ErrorMsg.Err = "session is expired"
+		return ErrorMsg, false
+	}
+	return ErrorMsg, true
+}
+
 func HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("session_token")
 	if err != nil {
@@ -187,6 +211,12 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	msg, auth := CheckAuth(r)
+	if !auth {
+		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
+		return nil
+	}
+
 	err := database.ClientStatusDB(client)
 	if err != nil {
 		ErrorMsg.Err = "client not authenticated"
@@ -214,6 +244,12 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	msg, auth := CheckAuth(r)
+	if !auth {
+		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
+		return nil
+	}
 
 	var devices model.Root
 	err := database.ClientStatusDB(client)
@@ -250,6 +286,12 @@ func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	msg, auth := CheckAuth(r)
+	if !auth {
+		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
+		return nil
+	}
+
 	err := database.ClientStatusDB(client)
 	if err != nil {
 		ErrorMsg.Err = "client not authenticated"
@@ -276,6 +318,12 @@ func HandleDeleteDevices(w http.ResponseWriter, r *http.Request, client *mongo.C
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	msg, auth := CheckAuth(r)
+	if !auth {
+		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
+		return nil
+	}
+
 	err := database.ClientStatusDB(client)
 	if err != nil {
 		ErrorMsg.Err = "client not authenticated"
@@ -296,6 +344,12 @@ func HandlePostDevices(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var devices model.Root
+
+	msg, auth := CheckAuth(r)
+	if !auth {
+		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
+		return nil
+	}
 
 	err := database.ClientStatusDB(client)
 	if err != nil {
