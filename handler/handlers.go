@@ -3,8 +3,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"grollmos/database"
-	"grollmos/model"
+	"github.com/DerRomtester/testproject-golang-webapi-1/database"
+	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 	"net/http"
 	"time"
 

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"grollmos/handler"
-	"grollmos/model"
+	"github.com/DerRomtester/testproject-golang-webapi-1/handler"
+	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 	"log"
 	"net/http"
 

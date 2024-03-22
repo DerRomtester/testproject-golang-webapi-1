@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"grollmos/model"
+	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
