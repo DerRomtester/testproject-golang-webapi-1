@@ -46,7 +46,7 @@
 
 ## :dart: About ##
 
-A small sample REST API project i found from grollmus
+A small simple REST API project i found from grollmus
 
 ## :sparkles: Features ##
 
