@@ -3,7 +3,8 @@ package database
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
+
 	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,17 +16,17 @@ import (
 func ConnectDB(mongoURI string) (*mongo.Client, error) {
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
-		fmt.Println("Error connecting to database")
+		log.Fatal("failed to create mongo client")
 		return nil, err
 	}
 
 	err = client.Ping(context.Background(), nil)
 	if err != nil {
-		fmt.Println("Error pinging database")
+		log.Fatal("Error pinging database")
 		return nil, err
 	}
 
-	fmt.Println("Connected to MongoDb")
+	log.Println("Connected to MongoDb")
 	return client, nil
 }
 
