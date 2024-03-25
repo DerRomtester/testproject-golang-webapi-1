@@ -44,12 +44,8 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) *mongo.Client {
 		return nil
 	}
 
-	// Get the expected password from our in memory map
 	expectedPassword, ok := users[creds.Username]
 
-	// If a password exists for the given user
-	// AND, if it is the same as the password we received, the we can move ahead
-	// if NOT, then we return an "Unauthorized" status
 	if !ok || expectedPassword != creds.Password {
 		ErrorMsg.Err = "not authorized"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
@@ -177,17 +173,14 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
-			// If the cookie is not set, return an unauthorized status
 			w.WriteHeader(http.StatusUnauthorized)
 			return err
 		}
-		// For any other type of error, return a bad request status
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
 	sessionToken := c.Value
 
-	// remove the users session from the session map
 	delete(sessions, sessionToken)
 
 	http.SetCookie(w, &http.Cookie{
