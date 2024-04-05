@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/DerRomtester/testproject-golang-webapi-1/handler"
-	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 	"log"
 	"net/http"
+
+	"github.com/DerRomtester/testproject-golang-webapi-1/handler"
+	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -18,10 +19,11 @@ const (
 
 var (
 	client *mongo.Client
+	APIMethodNotAllowed model.APIError
+	err error
 )
 
 func main() {
-	var APIMethodNotAllowed model.APIError
 	APIMethodNotAllowed.Err = "method not allowed"
 
 	http.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,10 @@ func main() {
 		case MethodPut:
 			handler.HandlePutLogout(w, r, client)
 		case MethodPost:
-			client = handler.HandlePostLogin(w, r)
+			client, err = handler.HandlePostLogin(w, r)
+			if err != nil {
+				log.Fatal(err)
+			}
 		default:
 			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
 		}
@@ -77,7 +82,7 @@ func main() {
 		}
 	})
 
-	err := http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
