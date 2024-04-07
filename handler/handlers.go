@@ -238,7 +238,7 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 	return nil
 }
 
-func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.Client, id string) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -256,7 +256,6 @@ func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.C
 		return err
 	}
 
-	id := r.URL.Query().Get("id")
 	if id == "" {
 		ErrorMsg.Err = "device id must be specified"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
@@ -279,7 +278,7 @@ func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.C
 	return nil
 }
 
-func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Client, id string) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -295,7 +294,7 @@ func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
-	id := r.URL.Query().Get("id")
+
 	if id == "" {
 		ErrorMsg.Err = "device id must be specified"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)

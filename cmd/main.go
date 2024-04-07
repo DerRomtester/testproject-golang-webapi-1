@@ -5,84 +5,60 @@ import (
 	"net/http"
 
 	"github.com/DerRomtester/testproject-golang-webapi-1/handler"
-	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-const (
-	MethodGet    = "GET"
-	MethodPost   = "POST"
-	MethodPut    = "PUT"
-	MethodDelete = "DELETE"
-)
-
 var (
 	client *mongo.Client
-	APIMethodNotAllowed model.APIError
-	err error
+	err    error
 )
 
 func main() {
-	APIMethodNotAllowed.Err = "method not allowed"
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case MethodPut:
-			handler.HandlePutLogout(w, r, client)
-		case MethodPost:
-			client, err = handler.HandlePostLogin(w, r)
-			if err != nil {
-				log.Fatal(err)
-			}
-		default:
-			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
+	mux.HandleFunc("PUT /auth", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandlePutLogout(w, r, client)
+	})
+
+	mux.HandleFunc("POST /auth", func(w http.ResponseWriter, r *http.Request) {
+		client, err = handler.HandlePostLogin(w, r)
+		if err != nil {
+			log.Fatal(err)
 		}
 	})
 
-	http.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case MethodGet:
-			handler.HandleGetDevices(w, r, client)
-		case MethodPost:
-			handler.HandlePostDevices(w, r, client)
-		case MethodDelete:
-			handler.HandleDeleteDevices(w, r, client)
-		default:
-			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
-		}
+	mux.HandleFunc("GET /devices", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandleGetDevices(w, r, client)
 	})
 
-	http.HandleFunc("/device", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case MethodGet:
-			handler.HandleGetDeviceByID(w, r, client)
-		case MethodDelete:
-			handler.HandleDeleteDevice(w, r, client)
-		default:
-			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
-		}
+	mux.HandleFunc("POST /devices", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandlePostDevices(w, r, client)
 	})
 
-	http.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case MethodGet:
-			handler.HandleGetSession(w, r)
-		default:
-			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
-		}
+	mux.HandleFunc("DELETE /devices", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandleDeleteDevices(w, r, client)
 	})
 
-	http.HandleFunc("/refresh", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case MethodPut:
-			handler.HandlePutRefreshToken(w, r)
-		default:
-			handler.HTTPJsonMsg(w, APIMethodNotAllowed, http.StatusMethodNotAllowed)
-		}
+	mux.HandleFunc("GET /device/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		handler.HandleGetDeviceByID(w, r, client, id)
 	})
 
-	err = http.ListenAndServe(":8080", nil)
+	mux.HandleFunc("DELETE /device/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		handler.HandleDeleteDevice(w, r, client, id)
+	})
+
+	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandleGetSession(w, r)
+	})
+
+	mux.HandleFunc("PUT /refresh", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandlePutRefreshToken(w, r)
+	})
+
+	err = http.ListenAndServe(":8080", mux)
 	if err != nil {
 		log.Fatal(err)
 	}
