@@ -17,11 +17,20 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var ErrorMsg model.APIError
-var users = map[string]string{
-	"user1": "password1",
-	"user2": "password2",
-}
+var (
+	ErrorMsg model.APIError
+	sessions = map[string]session{}
+
+	users = map[string]string{
+		"user1": "password1",
+		"user2": "password2",
+	}
+
+	db = model.MongDBConnection{
+		Host: "localhost",
+		Port: "27017",
+	}
+)
 
 type session struct {
 	Username string    `json:"username"`
@@ -31,8 +40,6 @@ type session struct {
 func (s session) isExpired() bool {
 	return s.Expiry.Before(time.Now())
 }
-
-var sessions = map[string]session{}
 
 func HandlePostLogin(w http.ResponseWriter, r *http.Request) (*mongo.Client, error) {
 	w.Header().Set("Content-Type", "application/json")
@@ -69,12 +76,13 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) (*mongo.Client, err
 		Expires: expiresAt,
 	})
 
-	client, err := database.ConnectDB("mongodb://localhost:27017")
+	client, err := database.ConnectDB(db)
 	if err != nil {
 		ErrorMsg.Err = "Error connecting to Database"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
 		return nil, err
 	}
+
 	return client, nil
 }
 
