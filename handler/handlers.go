@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -174,16 +175,20 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	c, err := r.Cookie("session_token")
+	var (
+		c, err       = r.Cookie("session_token")
+		errs         []error
+		sessionToken = c.Value
+	)
+
 	if err != nil {
 		if err == http.ErrNoCookie {
 			w.WriteHeader(http.StatusUnauthorized)
-			return err
+			return nil
 		}
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
-	sessionToken := c.Value
 
 	delete(sessions, sessionToken)
 
@@ -193,14 +198,19 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 		MaxAge: -1,
 	})
 
-	err = database.ClientStatusDB(client)
-	if err != nil {
-		ErrorMsg.Err = "client not authenticated"
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return err
+	if err = database.ClientStatusDB(client); err != nil {
+		errs = append(errs, err)
 	}
 
-	client.Disconnect(context.TODO())
+	if err := client.Disconnect(context.TODO()); err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		w.WriteHeader(http.StatusInternalServerError)
+		return fmt.Errorf("logout errors: %w", errs) // Combine errors
+	}
+
 	return nil
 }
 
