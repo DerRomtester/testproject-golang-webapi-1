@@ -12,10 +12,12 @@ import (
 var (
 	client *mongo.Client
 	err    error
+	port   string
 )
 
 func main() {
 	mux := http.NewServeMux()
+	port = ":8080"
 
 	mux.HandleFunc("PUT /auth", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandlePutLogout(w, r, client)
@@ -58,7 +60,9 @@ func main() {
 		handler.HandlePutRefreshToken(w, r)
 	})
 
-	err = http.ListenAndServe(":8080", mux)
+	log.Printf("Starting server on port %s\n", port)
+
+	err = http.ListenAndServe(port, mux)
 	if err != nil {
 		log.Fatal(err)
 	}

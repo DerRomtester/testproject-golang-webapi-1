@@ -26,7 +26,7 @@ var (
 		"user2": "password2",
 	}
 
-	db = model.MongDBConnection{
+	db = model.DatabaseConnection{
 		Host: "localhost",
 		Port: "27017",
 	}

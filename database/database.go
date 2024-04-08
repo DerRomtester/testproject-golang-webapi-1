@@ -13,16 +13,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func ConnectDB(db model.MongDBConnection) (*mongo.Client, error) {
-	var connStr string
-
-	if db.User == "" || db.Password == "" {
-		connStr = "mongodb://" + db.Host + ":" + db.Port
-	} else {
-		connStr = "mongodb://" + db.User + ":" + db.Password + db.Host + ":" + db.Port
-	}
-
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(connStr))
+func ConnectDB(db model.DatabaseConnection) (*mongo.Client, error) {
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(db.ConnStr()))
 	if err != nil {
 		log.Fatal("failed to create mongo client")
 		return nil, err
