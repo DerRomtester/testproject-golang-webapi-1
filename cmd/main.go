@@ -33,11 +33,8 @@ func InitDB() *mongo.Client {
 	return c
 }
 
-func main() {
-	client = InitDB()
+func buildHandlers(client *mongo.Client) *http.ServeMux {
 	mux := http.NewServeMux()
-	port = ":8080"
-
 	mux.HandleFunc("PUT /auth", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandlePutLogout(w, r, client)
 	})
@@ -76,8 +73,15 @@ func main() {
 		handler.HandlePutRefreshToken(w, r)
 	})
 
-	log.Printf("Starting server on port %s\n", port)
+	return mux
+}
 
+func main() {
+	client := InitDB()
+	port := ":8080"
+	mux := buildHandlers(client)
+
+	log.Printf("Starting server on port %s\n", port)
 	err := http.ListenAndServe(port, mux)
 	if err != nil {
 		log.Fatal(err)
