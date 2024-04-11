@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Database interface {
 	ConnStr()
@@ -16,8 +19,8 @@ type DatabaseConnection struct {
 
 func (d DatabaseConnection) ConnStr() string {
 	if d.User == "" || d.Password == "" {
-		return "mongodb://" + d.Host + ":" + d.Port
+		return fmt.Sprintf("mongodb://%s:%s", d.Host, d.Port)
 	} else {
-		return "mongodb://" + d.User + ":" + d.Password + "@" + d.Host + ":" + d.Port
+		return fmt.Sprintf("mongodb://%s:%s@%s:%s", d.User, d.Password, d.Host, d.Port)
 	}
 }

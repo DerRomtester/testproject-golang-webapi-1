@@ -175,10 +175,16 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	var (
-		c, err       = r.Cookie("session_token")
-		sessionToken = c.Value
-	)
+	_, err := CheckAuth(r)
+	if err != nil {
+		msg := "you are not logged in"
+		ErrorMsg.Err = msg
+		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
+		return errors.New(msg)
+	}
+
+	c, err := r.Cookie("session_token")
+	sessionToken := c.Value
 
 	if err != nil {
 		if err == http.ErrNoCookie {
