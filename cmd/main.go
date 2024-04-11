@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -12,16 +13,10 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type httpServer struct {
-	server       *http.Server
-	Host         string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-}
-
 var (
-	err  error
-	port string
+	err    error
+	port   string
+	client *mongo.Client
 
 	db = model.DatabaseConnection{
 		Host:    "localhost",
@@ -41,7 +36,7 @@ func InitDB() *mongo.Client {
 }
 
 func main() {
-	client := InitDB()
+	client = InitDB()
 	mux := http.NewServeMux()
 	port = ":8080"
 
@@ -52,7 +47,7 @@ func main() {
 	mux.HandleFunc("POST /auth", func(w http.ResponseWriter, r *http.Request) {
 		err = handler.HandlePostLogin(w, r)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
 		}
 	})
 

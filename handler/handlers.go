@@ -1,10 +1,8 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -31,9 +29,17 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	_, err := CheckAuth(r)
+	if err == nil {
+		msg := "Client already authorized"
+		ErrorMsg.Err = msg
+		HTTPJsonMsg(w, ErrorMsg, http.StatusAlreadyReported)
+		return errors.New(msg)
+	}
+
 	var creds model.Credentials
 	// Get the JSON body and decode into credentials
-	err := json.NewDecoder(r.Body).Decode(&creds)
+	err = json.NewDecoder(r.Body).Decode(&creds)
 	if err != nil {
 		ErrorMsg.Err = "structure of request is wrong"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
@@ -171,7 +177,6 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 
 	var (
 		c, err       = r.Cookie("session_token")
-		errs         []error
 		sessionToken = c.Value
 	)
 
@@ -192,17 +197,9 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 		MaxAge: -1,
 	})
 
-	if err = database.ClientStatusDB(client); err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := client.Disconnect(context.TODO()); err != nil {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		w.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("logout errors: %w", errs) // Combine errors
+	err = database.ClientStatusDB(client)
+	if err != nil {
+		return err
 	}
 
 	return nil
