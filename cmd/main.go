@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -14,7 +13,6 @@ import (
 )
 
 var (
-	err    error
 	port   string
 	client *mongo.Client
 
@@ -45,10 +43,7 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /auth", func(w http.ResponseWriter, r *http.Request) {
-		err = handler.HandlePostLogin(w, r)
-		if err != nil {
-			fmt.Println(err)
-		}
+		handler.HandlePostLogin(w, r)
 	})
 
 	mux.HandleFunc("GET /devices", func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +78,7 @@ func main() {
 
 	log.Printf("Starting server on port %s\n", port)
 
-	err = http.ListenAndServe(port, mux)
+	err := http.ListenAndServe(port, mux)
 	if err != nil {
 		log.Fatal(err)
 	}
