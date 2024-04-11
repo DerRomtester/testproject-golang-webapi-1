@@ -14,19 +14,21 @@ import (
 )
 
 func ConnectDB(db model.DatabaseConnection) (*mongo.Client, error) {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(db.ConnStr()))
+	ctx, _ := context.WithTimeout(context.Background(), db.Timeout)
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(db.ConnStr()))
+
 	if err != nil {
 		log.Fatal("failed to create mongo client")
 		return nil, err
 	}
 
-	err = client.Ping(context.Background(), nil)
+	err = client.Ping(ctx, nil)
 	if err != nil {
 		log.Fatal("Error pinging database")
 		return nil, err
 	}
 
-	log.Println("Connected to MongoDb")
+	log.Println("Connected to db host: ", db.Host, " Port: ", db.Port)
 	return client, nil
 }
 

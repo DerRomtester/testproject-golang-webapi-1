@@ -1,12 +1,15 @@
 package model
 
+import "time"
+
 type Database interface {
+	ConnStr()
 }
 
 type DatabaseConnection struct {
 	User     string
 	Password string
-	Timeout  string
+	Timeout  time.Duration
 	Host     string
 	Port     string
 }

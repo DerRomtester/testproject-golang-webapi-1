@@ -19,29 +19,15 @@ import (
 
 var (
 	ErrorMsg model.APIError
-	sessions = map[string]session{}
+	sessions = map[string]model.Session{}
 
 	users = map[string]string{
 		"user1": "password1",
 		"user2": "password2",
 	}
-
-	db = model.DatabaseConnection{
-		Host: "localhost",
-		Port: "27017",
-	}
 )
 
-type session struct {
-	Username string    `json:"username"`
-	Expiry   time.Time `json:"expiry"`
-}
-
-func (s session) isExpired() bool {
-	return s.Expiry.Before(time.Now())
-}
-
-func HandlePostLogin(w http.ResponseWriter, r *http.Request) (*mongo.Client, error) {
+func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -51,7 +37,7 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) (*mongo.Client, err
 	if err != nil {
 		ErrorMsg.Err = "structure of request is wrong"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
-		return nil, err
+		return err
 	}
 
 	expectedPassword, ok := users[creds.Username]
@@ -59,13 +45,13 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) (*mongo.Client, err
 	if !ok || expectedPassword != creds.Password {
 		ErrorMsg.Err = "not authorized"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return nil, errors.New("Not authorized")
+		return errors.New("Not authorized")
 	}
 
 	sessionToken := uuid.NewString()
 	expiresAt := time.Now().Add(120 * time.Second)
 
-	sessions[sessionToken] = session{
+	sessions[sessionToken] = model.UserSession{
 		Username: creds.Username,
 		Expiry:   expiresAt,
 	}
@@ -76,14 +62,7 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) (*mongo.Client, err
 		Expires: expiresAt,
 	})
 
-	client, err := database.ConnectDB(db)
-	if err != nil {
-		ErrorMsg.Err = "Error connecting to Database"
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
-		return nil, err
-	}
-
-	return client, nil
+	return nil
 }
 
 func CheckAuth(r *http.Request) (model.APIError, error) {
@@ -97,12 +76,16 @@ func CheckAuth(r *http.Request) (model.APIError, error) {
 		return ErrorMsg, err
 	}
 	sessionToken := c.Value
+	var userSession model.Session
+
 	userSession, exists := sessions[sessionToken]
 	if !exists {
 		ErrorMsg.Err = "session does not exist"
 		return ErrorMsg, errors.New("Session does not exist")
 	}
-	if userSession.isExpired() {
+
+	userSession = sessions[sessionToken]
+	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
 		ErrorMsg.Err = "session is expired"
 		return ErrorMsg, errors.New("Session is expired")
@@ -128,7 +111,7 @@ func HandleGetSession(w http.ResponseWriter, r *http.Request) error {
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
-	if userSession.isExpired() {
+	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
 		ErrorMsg.Err = "session is expired"
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
@@ -139,6 +122,11 @@ func HandleGetSession(w http.ResponseWriter, r *http.Request) error {
 }
 
 func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
+	var (
+		newSession      model.UserSession
+		newSessionToken string
+	)
+
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
@@ -155,18 +143,16 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusUnauthorized)
 		return errors.New("Session does not exist")
 	}
-	if userSession.isExpired() {
+	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
 		w.WriteHeader(http.StatusUnauthorized)
 		return errors.New("Session is expired")
 	}
 
-	newSessionToken := uuid.NewString()
-	expiresAt := time.Now().Add(120 * time.Second)
-
-	sessions[newSessionToken] = session{
-		Username: userSession.Username,
-		Expiry:   expiresAt,
+	newSession, newSessionToken = newSession.NewSession(120)
+	sessions[newSessionToken] = model.UserSession{
+		Username: newSession.Username,
+		Expiry:   newSession.Expiry,
 	}
 
 	delete(sessions, sessionToken)

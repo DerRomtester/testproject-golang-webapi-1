@@ -3,19 +3,45 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/DerRomtester/testproject-golang-webapi-1/database"
 	"github.com/DerRomtester/testproject-golang-webapi-1/handler"
+	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+type httpServer struct {
+	server       *http.Server
+	Host         string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
 var (
-	client *mongo.Client
-	err    error
-	port   string
+	err  error
+	port string
+
+	db = model.DatabaseConnection{
+		Host:    "localhost",
+		Port:    "27017",
+		Timeout: 5 * time.Second,
+	}
 )
 
+func InitDB() *mongo.Client {
+	c, err := database.ConnectDB(db)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return c
+}
+
 func main() {
+	client := InitDB()
 	mux := http.NewServeMux()
 	port = ":8080"
 
@@ -24,7 +50,7 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /auth", func(w http.ResponseWriter, r *http.Request) {
-		client, err = handler.HandlePostLogin(w, r)
+		err = handler.HandlePostLogin(w, r)
 		if err != nil {
 			log.Fatal(err)
 		}
