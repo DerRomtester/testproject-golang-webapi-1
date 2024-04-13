@@ -31,7 +31,7 @@ func TestCheckAuthValidJson_Success(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/auth", bytes.NewReader(requestBody))
-	creds, apiError, err := handler.CheckAuthValidJson(req, model.Credentials{})
+	creds, apiError, err := handler.CheckAuthValidJson(req)
 
 	// Verify successful decoding
 	if err != nil {
@@ -53,7 +53,7 @@ func TestCheckAuthValidJson_InvalidJson(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/auth", bytes.NewReader(invalidBody))
 
 	// Call the function under test
-	_, apiError, err := handler.CheckAuthValidJson(req, model.Credentials{})
+	_, apiError, err := handler.CheckAuthValidJson(req)
 
 	// Verify decoding error
 	if err == nil {
@@ -66,7 +66,7 @@ func TestCheckAuthValidJson_InvalidJson(t *testing.T) {
 
 func TestCheckAuthValidJson_EmptyBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/auth", nil)
-	_, _, err := handler.CheckAuthValidJson(req, model.Credentials{})
+	_, _, err := handler.CheckAuthValidJson(req)
 
 	if err == nil {
 		t.Error("Expected error for emtpty request body")

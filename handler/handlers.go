@@ -25,11 +25,34 @@ var (
 	}
 )
 
+type Authorization interface {
+	CheckAuth(r *http.Request) (model.APIError, error)
+	CheckAuthValidJson(r *http.Request) (model.Credentials, model.APIError, error)
+}
+
+func CheckAuthValidJson(r *http.Request) (model.Credentials, model.APIError, error) {
+	var creds model.Credentials
+	var msg model.APIError
+	err := json.NewDecoder(r.Body).Decode(&creds)
+	if err != nil {
+		msg = model.APIError{
+			Err: "structure of request is wrong",
+		}
+		return creds, msg, err
+	}
+	return creds, msg, nil
+}
+
 func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	_, err := CheckAuth(r)
+	var (
+		err error
+		msg model.APIError
+	)
+
+	_, err = CheckAuth(r)
 	if err == nil {
 		msg := "Client already authorized"
 		ErrorMsg.Err = msg
@@ -39,10 +62,10 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 
 	var creds model.Credentials
 	// Get the JSON body and decode into credentials
-	err = json.NewDecoder(r.Body).Decode(&creds)
+	creds, msg, err = CheckAuthValidJson(r)
 	if err != nil {
-		ErrorMsg.Err = "structure of request is wrong"
-		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
+		msg.Err = "structure of request is wrong"
+		HTTPJsonMsg(w, msg, http.StatusBadRequest)
 		return err
 	}
 
