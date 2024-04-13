@@ -20,8 +20,9 @@ var (
 	sessions = map[string]model.Session{}
 
 	users = map[string]string{
-		"user1": "password1",
-		"user2": "password2",
+		"user1":     "password1",
+		"user2":     "password2",
+		"test_user": "password123",
 	}
 )
 
@@ -172,13 +173,14 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusUnauthorized)
 		return errors.New("Session does not exist")
 	}
+
 	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
 		w.WriteHeader(http.StatusUnauthorized)
 		return errors.New("Session is expired")
 	}
 
-	newSession, newSessionToken = newSession.NewSession(120)
+	newSession, newSessionToken = userSession.NewSession(120)
 	sessions[newSessionToken] = model.UserSession{
 		Username: newSession.Username,
 		Expiry:   newSession.Expiry,
