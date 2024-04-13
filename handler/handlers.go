@@ -180,7 +180,7 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
 		return errors.New("Session is expired")
 	}
 
-	newSession, newSessionToken = userSession.NewSession(120)
+	newSession, newSessionToken = userSession.RenewSession(120)
 	sessions[newSessionToken] = model.UserSession{
 		Username: newSession.Username,
 		Expiry:   newSession.Expiry,

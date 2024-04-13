@@ -20,7 +20,7 @@ func (s UserSession) IsExpired() bool {
 	return s.Expiry.Before(time.Now())
 }
 
-func (s UserSession) NewSession(t time.Duration) (UserSession, string) {
+func (s UserSession) RenewSession(t time.Duration) (UserSession, string) {
 	newSessionToken := uuid.NewString()
 	expiresAt := time.Now().Add(t * time.Second)
 
