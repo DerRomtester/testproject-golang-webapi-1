@@ -12,14 +12,20 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var (
-	port   string
-	client *mongo.Client
+type Server struct {
+	Host string
+	Port string
+}
 
+var (
 	db = model.DatabaseConnection{
 		Host:    "localhost",
 		Port:    "27017",
 		Timeout: 5 * time.Second,
+	}
+	srv = Server{
+		Host: "localhost",
+		Port: ":8080",
 	}
 )
 
@@ -78,11 +84,10 @@ func buildHandlers(client *mongo.Client) *http.ServeMux {
 
 func main() {
 	client := InitDB()
-	port := ":8080"
 	mux := buildHandlers(client)
 
-	log.Printf("Starting server on port %s\n", port)
-	err := http.ListenAndServe(port, mux)
+	log.Printf("Starting server on port %s\n", srv.Port)
+	err := http.ListenAndServe(srv.Port, mux)
 	if err != nil {
 		log.Fatal(err)
 	}

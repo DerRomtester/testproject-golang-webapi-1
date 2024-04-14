@@ -65,7 +65,6 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	// Get the JSON body and decode into credentials
 	creds, msg, err = CheckAuthValidJson(r)
 	if err != nil {
-		msg.Err = "structure of request is wrong"
 		HTTPJsonMsg(w, msg, http.StatusBadRequest)
 		return err
 	}
