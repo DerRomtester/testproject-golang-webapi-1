@@ -8,7 +8,7 @@ import (
 
 type Session interface {
 	IsExpired() bool
-	NewSession(t time.Duration) (UserSession, string)
+	RenewSession(t time.Duration) (UserSession, string)
 }
 
 type UserSession struct {

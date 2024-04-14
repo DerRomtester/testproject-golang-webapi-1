@@ -17,7 +17,7 @@ import (
 
 var (
 	ErrorMsg model.APIError
-	sessions = map[string]model.Session{}
+	sessions = map[string]model.UserSession{}
 
 	users = map[string]string{
 		"user1":     "password1",
