@@ -6,7 +6,7 @@ import (
 )
 
 type Database interface {
-	ConnStr()
+	GetConnStr()
 }
 
 type DatabaseConnection struct {
@@ -17,7 +17,7 @@ type DatabaseConnection struct {
 	Port     string
 }
 
-func (d DatabaseConnection) ConnStr() string {
+func (d DatabaseConnection) GetConnStr() string {
 	if d.User == "" || d.Password == "" {
 		return fmt.Sprintf("mongodb://%s:%s", d.Host, d.Port)
 	} else {

@@ -15,7 +15,7 @@ import (
 
 func ConnectDB(db model.DatabaseConnection) (*mongo.Client, error) {
 	ctx, _ := context.WithTimeout(context.Background(), db.Timeout)
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(db.ConnStr()))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(db.GetConnStr()))
 
 	if err != nil {
 		log.Fatal("failed to create mongo client")
