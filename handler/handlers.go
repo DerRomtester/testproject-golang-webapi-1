@@ -63,9 +63,11 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 
 	_, err = CheckAuth(r)
 	if err == nil {
-		msg := ErrAlreadyAuthenticated
+		msg := model.APIError{
+			Err: ErrAlreadyAuthenticated,
+		}
 		HTTPJsonMsg(w, msg, http.StatusAlreadyReported)
-		return errors.New(msg)
+		return errors.New(ErrAlreadyAuthenticated)
 	}
 
 	var creds model.Credentials
