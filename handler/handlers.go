@@ -245,7 +245,7 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	ErrorMsg, err := CheckAuth(r)
+	msg, err := CheckAuth(r)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return err
