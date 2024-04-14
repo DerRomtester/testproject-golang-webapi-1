@@ -7,3 +7,7 @@ run:
 clean: 
 	rm bin/main
 	go clean
+
+start-container: 
+	docker-compose build
+	docker compose up
