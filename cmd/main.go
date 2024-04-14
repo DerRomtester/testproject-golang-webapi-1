@@ -35,41 +35,41 @@ func InitDB() *mongo.Client {
 
 func buildHandlers(client *mongo.Client) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /auth", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PUT /v1/auth", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandlePutLogout(w, r, client)
 	})
 
-	mux.HandleFunc("POST /auth", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/auth", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandlePostLogin(w, r)
 	})
 
-	mux.HandleFunc("GET /devices", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/devices", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandleGetDevices(w, r, client)
 	})
 
-	mux.HandleFunc("POST /devices", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/devices", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandlePostDevices(w, r, client)
 	})
 
-	mux.HandleFunc("DELETE /devices", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE /v1/devices", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandleDeleteDevices(w, r, client)
 	})
 
-	mux.HandleFunc("GET /device/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/device/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		handler.HandleGetDeviceByID(w, r, client, id)
 	})
 
-	mux.HandleFunc("DELETE /device/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE /v1/device/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		handler.HandleDeleteDevice(w, r, client, id)
 	})
 
-	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/session", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandleGetSession(w, r)
 	})
 
-	mux.HandleFunc("PUT /refresh", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PUT /v1/refresh", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandlePutRefreshToken(w, r)
 	})
 
