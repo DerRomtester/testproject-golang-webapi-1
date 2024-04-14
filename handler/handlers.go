@@ -24,6 +24,14 @@ var (
 		"user2":     "password2",
 		"test_user": "password123",
 	}
+
+	ErrWrongStructure       = "structure of request is wrong"
+	ErrAlreadyAuthenticated = "client already authenticated"
+	ErrNotAuthenticated     = "not authenticated"
+	ErrSessionNotExist      = "session does not exist"
+	ErrSessionExpired       = "session expired"
+	ErrNoCookie             = "no session cookie"
+	ErrNoDeviceID           = "deviceID needs to be specified"
 )
 
 type Authorization interface {
@@ -37,7 +45,7 @@ func CheckAuthValidJson(r *http.Request) (model.Credentials, model.APIError, err
 	err := json.NewDecoder(r.Body).Decode(&creds)
 	if err != nil {
 		msg = model.APIError{
-			Err: "structure of request is wrong",
+			Err: ErrWrongStructure,
 		}
 		return creds, msg, err
 	}
@@ -55,9 +63,8 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 
 	_, err = CheckAuth(r)
 	if err == nil {
-		msg := "Client already authorized"
-		ErrorMsg.Err = msg
-		HTTPJsonMsg(w, ErrorMsg, http.StatusAlreadyReported)
+		msg := ErrAlreadyAuthenticated
+		HTTPJsonMsg(w, msg, http.StatusAlreadyReported)
 		return errors.New(msg)
 	}
 
@@ -72,9 +79,9 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	expectedPassword, ok := users[creds.Username]
 
 	if !ok || expectedPassword != creds.Password {
-		ErrorMsg.Err = "not authorized"
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return errors.New("Not authorized")
+		return errors.New(ErrNotAuthenticated)
 	}
 
 	sessionToken := uuid.NewString()
@@ -99,7 +106,7 @@ func CheckAuth(r *http.Request) (model.APIError, error) {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
-			ErrorMsg.Err = "session does not exist"
+			ErrorMsg.Err = ErrNoCookie
 			return ErrorMsg, err
 		}
 		return ErrorMsg, err
@@ -109,15 +116,15 @@ func CheckAuth(r *http.Request) (model.APIError, error) {
 
 	userSession, exists := sessions[sessionToken]
 	if !exists {
-		ErrorMsg.Err = "session does not exist"
-		return ErrorMsg, errors.New("Session does not exist")
+		ErrorMsg.Err = ErrSessionNotExist
+		return ErrorMsg, errors.New(ErrSessionNotExist)
 	}
 
 	userSession = sessions[sessionToken]
 	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
-		ErrorMsg.Err = "session is expired"
-		return ErrorMsg, errors.New("Session is expired")
+		ErrorMsg.Err = ErrSessionExpired
+		return ErrorMsg, errors.New(ErrSessionExpired)
 	}
 	return ErrorMsg, nil
 }
@@ -126,7 +133,7 @@ func HandleGetSession(w http.ResponseWriter, r *http.Request) error {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
-			ErrorMsg.Err = "no session cookie found"
+			ErrorMsg.Err = ErrNoCookie
 			HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 			return err
 		}
@@ -136,13 +143,13 @@ func HandleGetSession(w http.ResponseWriter, r *http.Request) error {
 	sessionToken := c.Value
 	userSession, exists := sessions[sessionToken]
 	if !exists {
-		ErrorMsg.Err = "session does not exist"
+		ErrorMsg.Err = ErrSessionNotExist
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
 	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
-		ErrorMsg.Err = "session is expired"
+		ErrorMsg.Err = ErrSessionExpired
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
@@ -170,13 +177,13 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
 	userSession, exists := sessions[sessionToken]
 	if !exists {
 		w.WriteHeader(http.StatusUnauthorized)
-		return errors.New("Session does not exist")
+		return errors.New(ErrSessionNotExist)
 	}
 
 	if userSession.IsExpired() {
 		delete(sessions, sessionToken)
 		w.WriteHeader(http.StatusUnauthorized)
-		return errors.New("Session is expired")
+		return errors.New(ErrSessionExpired)
 	}
 
 	newSession, newSessionToken = userSession.RenewSession(120)
@@ -201,10 +208,9 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 
 	_, err := CheckAuth(r)
 	if err != nil {
-		msg := "you are not logged in"
-		ErrorMsg.Err = msg
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
-		return errors.New(msg)
+		return errors.New(ErrorMsg.Err)
 	}
 
 	c, err := r.Cookie("session_token")
@@ -239,7 +245,7 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r)
+	ErrorMsg, err := CheckAuth(r)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return err
@@ -247,7 +253,7 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 
 	err = database.ClientStatusDB(client)
 	if err != nil {
-		ErrorMsg.Err = "client not authenticated"
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
@@ -282,13 +288,13 @@ func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.C
 	var devices model.Root
 	err = database.ClientStatusDB(client)
 	if err != nil {
-		ErrorMsg.Err = "client not authenticated"
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
 
 	if id == "" {
-		ErrorMsg.Err = "device id must be specified"
+		ErrorMsg.Err = ErrNoDeviceID
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
 		return nil
 	}
@@ -321,13 +327,13 @@ func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 
 	err = database.ClientStatusDB(client)
 	if err != nil {
-		ErrorMsg.Err = "client not authenticated"
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
 
 	if id == "" {
-		ErrorMsg.Err = "device id must be specified"
+		ErrorMsg.Err = ErrNoDeviceID
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
 		return nil
 	}
@@ -353,7 +359,7 @@ func HandleDeleteDevices(w http.ResponseWriter, r *http.Request, client *mongo.C
 
 	err = database.ClientStatusDB(client)
 	if err != nil {
-		ErrorMsg.Err = "client not authenticated"
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
@@ -380,7 +386,7 @@ func HandlePostDevices(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 
 	err = database.ClientStatusDB(client)
 	if err != nil {
-		ErrorMsg.Err = "client not authenticated"
+		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
