@@ -1,0 +1,18 @@
+version: '3.1'
+services:
+  mongo:
+      image: 'mongo:latest'
+      container_name: 'mongo'
+      ports:
+        - '27100:27017'
+
+  restapi: 
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: devices-api
+    container_name: restapi
+    ports: 
+      - 8080:8080
+    depends_on: 
+      - 'mongo'

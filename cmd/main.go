@@ -19,9 +19,9 @@ type Server struct {
 
 var (
 	db = model.DatabaseConnection{
-		Host:    "localhost",
+		Host:    "mongo",
 		Port:    "27017",
-		Timeout: 5 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 	srv = Server{
 		Host: "localhost",
