@@ -1,3 +1,4 @@
 bin/
 testdata/
 vendor/
+cmd/config.yaml
