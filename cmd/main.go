@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/DerRomtester/testproject-golang-webapi-1/handler"
 	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
+	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -17,19 +19,32 @@ type Server struct {
 	Port string
 }
 
-var (
-	db = model.DatabaseConnection{
-		Host:    "mongo",
-		Port:    "27017",
-		Timeout: 30 * time.Second,
-	}
-	srv = Server{
-		Host: "localhost",
-		Port: ":8080",
-	}
-)
+func GetConfig() (Server, model.DatabaseConnection) {
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	viper.AutomaticEnv()
 
-func InitDB() *mongo.Client {
+	err := viper.ReadInConfig()
+	if err != nil {
+		fmt.Println("error config file: default \n", err)
+	}
+	db := model.DatabaseConnection{
+		User:     viper.GetString("DatabaseConnection.User"),
+		Password: viper.GetString("DatabaseConnection.Password"),
+		Host:     viper.GetString("DatabaseConnection.Host"),
+		Port:     viper.GetString("DatabaseConnection.Port"),
+		Timeout:  viper.GetDuration("DatabaseConnection.Timeout") * time.Second,
+	}
+
+	srv := Server{
+		Host: viper.GetString("Server.Host"),
+		Port: viper.GetString("Server.Port"),
+	}
+	return srv, db
+}
+
+func InitDB(db model.DatabaseConnection) *mongo.Client {
 	c, err := database.ConnectDB(db)
 
 	if err != nil {
@@ -83,7 +98,8 @@ func buildHandlers(client *mongo.Client) *http.ServeMux {
 }
 
 func main() {
-	client := InitDB()
+	srv, db := GetConfig()
+	client := InitDB(db)
 	mux := buildHandlers(client)
 
 	log.Printf("Starting server on port %s\n", srv.Port)

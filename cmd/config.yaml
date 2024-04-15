@@ -1,0 +1,8 @@
+DatabaseConnection: 
+  Host: "localhost"
+  Port: "27017"
+  Timeout: 30
+
+Server: 
+  Host: "localhost"
+  Port: ":23452"
