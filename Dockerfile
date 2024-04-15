@@ -7,6 +7,7 @@ RUN go mod verify
 
 # copy directory files i.e all files ending with .go
 COPY . /app
+COPY conf/config.yaml /app
 RUN go build -o devices-api ./cmd**
 
 # tells Docker that the container listens on specified network ports at runtime
