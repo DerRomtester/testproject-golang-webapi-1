@@ -16,15 +16,7 @@ import (
 )
 
 var (
-	ErrorMsg model.APIError
-	sessions = map[string]model.UserSession{}
-
-	users = map[string]string{
-		"user1":     "password1",
-		"user2":     "password2",
-		"test_user": "password123",
-	}
-
+	ErrorMsg                model.APIError
 	ErrWrongStructure       = "structure of request is wrong"
 	ErrAlreadyAuthenticated = "client already authenticated"
 	ErrNotAuthenticated     = "not authenticated"
@@ -32,15 +24,16 @@ var (
 	ErrSessionExpired       = "session expired"
 	ErrNoCookie             = "no session cookie"
 	ErrNoDeviceID           = "deviceID needs to be specified"
+	ErrDatabase             = "db error"
 )
 
 type Authorization interface {
 	CheckAuth(r *http.Request) (model.APIError, error)
-	CheckAuthValidJson(r *http.Request) (model.Credentials, model.APIError, error)
+	CheckAuthValidJson(r *http.Request) (model.UserCredentials, model.APIError, error)
 }
 
-func CheckAuthValidJson(r *http.Request) (model.Credentials, model.APIError, error) {
-	var creds model.Credentials
+func CheckAuthValidJson(r *http.Request) (model.UserCredentials, model.APIError, error) {
+	var creds model.UserCredentials
 	var msg model.APIError
 	err := json.NewDecoder(r.Body).Decode(&creds)
 	if err != nil {
@@ -52,7 +45,40 @@ func CheckAuthValidJson(r *http.Request) (model.Credentials, model.APIError, err
 	return creds, msg, nil
 }
 
-func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
+func HandleCreateUser(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+	creds, msg, err := CheckAuthValidJson(r)
+	if err != nil {
+		HTTPJsonMsg(w, msg, http.StatusBadRequest)
+		return err
+	}
+
+	if err := database.ClientStatusDB(client); err != nil {
+		ErrorMsg.Err = ErrNotAuthenticated
+		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		return err
+	}
+
+	if err := database.CreateUserDB(creds, client); err != nil {
+		ErrorMsg.Err = err.Error()
+		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		return nil
+	}
+	return nil
+}
+
+func CheckUserPassword(u model.UserCredentials, c *mongo.Client) error {
+	db, err := database.GetUserDB(u.Username, c)
+	if err != nil {
+		return err
+	}
+
+	if u.Username == db.Username && u.Password == db.Password {
+		return nil
+	}
+	return errors.New("username or password do not match")
+}
+
+func HandlePostLogin(w http.ResponseWriter, r *http.Request, c *mongo.Client) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -61,7 +87,7 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 		msg model.APIError
 	)
 
-	_, err = CheckAuth(r)
+	_, err = CheckAuth(r, c)
 	if err == nil {
 		msg := model.APIError{
 			Err: ErrAlreadyAuthenticated,
@@ -70,17 +96,16 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 		return errors.New(ErrAlreadyAuthenticated)
 	}
 
-	var creds model.Credentials
-	// Get the JSON body and decode into credentials
+	var creds model.UserCredentials
+	// Get the JSON body and decode into UserCredentials
 	creds, msg, err = CheckAuthValidJson(r)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusBadRequest)
 		return err
 	}
 
-	expectedPassword, ok := users[creds.Username]
-
-	if !ok || expectedPassword != creds.Password {
+	err = CheckUserPassword(creds, c)
+	if err != nil {
 		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return errors.New(ErrNotAuthenticated)
@@ -89,9 +114,17 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	sessionToken := uuid.NewString()
 	expiresAt := time.Now().Add(120 * time.Second)
 
-	sessions[sessionToken] = model.UserSession{
+	session := model.UserSession{
 		Username: creds.Username,
 		Expiry:   expiresAt,
+		Token:    sessionToken,
+	}
+
+	err = database.CreateSessionDB(session, c)
+	if err != nil {
+		ErrorMsg.Err = ErrDatabase
+		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		return errors.New(ErrDatabase)
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -103,7 +136,7 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func CheckAuth(r *http.Request) (model.APIError, error) {
+func CheckAuth(r *http.Request, client *mongo.Client) (model.APIError, error) {
 	var ErrorMsg model.APIError
 	c, err := r.Cookie("session_token")
 	if err != nil {
@@ -114,24 +147,25 @@ func CheckAuth(r *http.Request) (model.APIError, error) {
 		return ErrorMsg, err
 	}
 	sessionToken := c.Value
-	var userSession model.Session
-
-	userSession, exists := sessions[sessionToken]
-	if !exists {
+	userSession, err := database.GetTokenDB(sessionToken, client)
+	if err != nil {
 		ErrorMsg.Err = ErrSessionNotExist
 		return ErrorMsg, errors.New(ErrSessionNotExist)
 	}
 
-	userSession = sessions[sessionToken]
 	if userSession.IsExpired() {
-		delete(sessions, sessionToken)
+		err = database.DeleteTokenDB(sessionToken, client)
+		if err != nil {
+			ErrorMsg.Err = ErrDatabase
+			return ErrorMsg, errors.New(ErrDatabase)
+		}
 		ErrorMsg.Err = ErrSessionExpired
 		return ErrorMsg, errors.New(ErrSessionExpired)
 	}
 	return ErrorMsg, nil
 }
 
-func HandleGetSession(w http.ResponseWriter, r *http.Request) error {
+func HandleGetSession(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
@@ -143,28 +177,25 @@ func HandleGetSession(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	sessionToken := c.Value
-	userSession, exists := sessions[sessionToken]
-	if !exists {
+	userSession, err := database.GetTokenDB(sessionToken, client)
+	if err != nil {
 		ErrorMsg.Err = ErrSessionNotExist
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
+
 	if userSession.IsExpired() {
-		delete(sessions, sessionToken)
+		database.DeleteTokenDB(sessionToken, client)
 		ErrorMsg.Err = ErrSessionExpired
 		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
 		return err
 	}
+
 	HTTPJsonMsg(w, userSession, http.StatusOK)
 	return nil
 }
 
-func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
-	var (
-		newSession      model.UserSession
-		newSessionToken string
-	)
-
+func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
@@ -176,29 +207,31 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request) error {
 	}
 	sessionToken := c.Value
 
-	userSession, exists := sessions[sessionToken]
-	if !exists {
-		w.WriteHeader(http.StatusUnauthorized)
-		return errors.New(ErrSessionNotExist)
+	userSession, err := database.GetTokenDB(sessionToken, client)
+	if err != nil {
+		ErrorMsg.Err = ErrSessionNotExist
+		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		return err
 	}
 
 	if userSession.IsExpired() {
-		delete(sessions, sessionToken)
-		w.WriteHeader(http.StatusUnauthorized)
-		return errors.New(ErrSessionExpired)
+		database.DeleteTokenDB(sessionToken, client)
+		ErrorMsg.Err = ErrSessionExpired
+		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		return err
 	}
 
-	newSession, newSessionToken = userSession.RenewSession(120)
-	sessions[newSessionToken] = model.UserSession{
-		Username: newSession.Username,
-		Expiry:   newSession.Expiry,
+	newSession := userSession.RenewSession(120)
+	err = database.CreateSessionDB(newSession, client)
+	if err != nil {
+		return err
 	}
 
-	delete(sessions, sessionToken)
+	database.DeleteTokenDB(sessionToken, client)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:    "session_token",
-		Value:   newSessionToken,
+		Value:   newSession.Token,
 		Expires: time.Now().Add(120 * time.Second),
 	})
 	return nil
@@ -208,7 +241,7 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	_, err := CheckAuth(r)
+	_, err := CheckAuth(r, client)
 	if err != nil {
 		ErrorMsg.Err = ErrNotAuthenticated
 		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
@@ -227,7 +260,11 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 		return err
 	}
 
-	delete(sessions, sessionToken)
+	err = database.DeleteTokenDB(sessionToken, client)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return err
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:   "session_token",
@@ -247,7 +284,7 @@ func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r)
+	msg, err := CheckAuth(r, client)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return err
@@ -281,7 +318,7 @@ func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.C
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r)
+	msg, err := CheckAuth(r, client)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return nil
@@ -321,7 +358,7 @@ func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r)
+	msg, err := CheckAuth(r, client)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return nil
@@ -353,7 +390,7 @@ func HandleDeleteDevices(w http.ResponseWriter, r *http.Request, client *mongo.C
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r)
+	msg, err := CheckAuth(r, client)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return err
@@ -380,7 +417,7 @@ func HandlePostDevices(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var devices model.Root
 
-	msg, err := CheckAuth(r)
+	msg, err := CheckAuth(r, client)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return nil

@@ -11,16 +11,8 @@ import (
 	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 )
 
-var (
-	sessions = map[string]model.Session{}
-
-	users = map[string]string{
-		"test_user": "1234",
-	}
-)
-
 func TestCheckAuthValidJson_Success(t *testing.T) {
-	validCreds := model.Credentials{
+	validCreds := model.UserCredentials{
 		Username: "test_user",
 		Password: "password123",
 	}

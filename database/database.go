@@ -14,7 +14,8 @@ import (
 )
 
 func ConnectDB(db model.DatabaseConnection) (*mongo.Client, error) {
-	ctx, _ := context.WithTimeout(context.Background(), db.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.Timeout)
+	defer cancel()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(db.GetConnStr()))
 
 	if err != nil {
@@ -124,6 +125,110 @@ func WriteDevicesDB(devices model.Root, client *mongo.Client) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+func CreateUserDB(user model.UserCredentials, client *mongo.Client) error {
+	err := ClientStatusDB(client)
+	if err != nil {
+		return err
+	}
+
+	collection := client.Database("users-db").Collection("users")
+	filter := bson.D{primitive.E{Key: "_id", Value: user.Username}}
+	var existingUser model.UserCredentials
+	err = collection.FindOne(context.Background(), filter).Decode(&existingUser)
+	if err == nil {
+		update := bson.D{primitive.E{Key: "$set", Value: bson.M{"username": user.Username}}}
+		_, err := collection.UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := collection.InsertOne(context.Background(), user)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GetUserDB(username string, client *mongo.Client) (model.UserCredentials, error) {
+	var user model.UserCredentials
+	filter := bson.D{primitive.E{Key: "username", Value: username}}
+	err := ClientStatusDB(client)
+	if err != nil {
+		return user, err
+	}
+
+	collection := client.Database("users-db").Collection("users")
+	err = collection.FindOne(context.Background(), filter).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return user, err
+		}
+		return user, err
+	}
+	return user, nil
+}
+
+func CreateSessionDB(s model.UserSession, client *mongo.Client) error {
+	err := ClientStatusDB(client)
+	if err != nil {
+		return err
+	}
+
+	collection := client.Database("users-db").Collection("session")
+	filter := bson.D{primitive.E{Key: "token", Value: s.Token}}
+	var existingToken model.UserSession
+	err = collection.FindOne(context.Background(), filter).Decode(&existingToken)
+	if err == nil {
+		update := bson.D{primitive.E{Key: "$set", Value: bson.M{"token": s.Token}}}
+		_, err := collection.UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := collection.InsertOne(context.Background(), s)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GetTokenDB(token string, client *mongo.Client) (model.UserSession, error) {
+	var session model.UserSession
+	filter := bson.D{primitive.E{Key: "token", Value: token}}
+	err := ClientStatusDB(client)
+	if err != nil {
+		return session, err
+	}
+
+	collection := client.Database("users-db").Collection("session")
+	err = collection.FindOne(context.Background(), filter).Decode(&session)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return session, err
+		}
+		return session, err
+	}
+	return session, nil
+}
+
+func DeleteTokenDB(token string, client *mongo.Client) error {
+	filter := bson.D{primitive.E{Key: "token", Value: token}}
+
+	err := ClientStatusDB(client)
+	if err != nil {
+		return err
+	}
+
+	collection := client.Database("users-db").Collection("session")
+	_, err = collection.DeleteOne(context.TODO(), filter)
+	if err != nil {
+		return err
 	}
 	return nil
 }

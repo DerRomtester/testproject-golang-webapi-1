@@ -61,7 +61,7 @@ func buildHandlers(client *mongo.Client) *http.ServeMux {
 	})
 
 	mux.HandleFunc("POST /v1/auth", func(w http.ResponseWriter, r *http.Request) {
-		handler.HandlePostLogin(w, r)
+		handler.HandlePostLogin(w, r, client)
 	})
 
 	mux.HandleFunc("GET /v1/devices", func(w http.ResponseWriter, r *http.Request) {
@@ -87,11 +87,15 @@ func buildHandlers(client *mongo.Client) *http.ServeMux {
 	})
 
 	mux.HandleFunc("GET /v1/session", func(w http.ResponseWriter, r *http.Request) {
-		handler.HandleGetSession(w, r)
+		handler.HandleGetSession(w, r, client)
 	})
 
 	mux.HandleFunc("PUT /v1/refresh", func(w http.ResponseWriter, r *http.Request) {
-		handler.HandlePutRefreshToken(w, r)
+		handler.HandlePutRefreshToken(w, r, client)
+	})
+
+	mux.HandleFunc("POST /v1/user", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandleCreateUser(w, r, client)
 	})
 
 	return mux
