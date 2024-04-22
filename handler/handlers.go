@@ -377,7 +377,7 @@ func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 		return nil
 	}
 
-	err = database.DeleteDeviceDB(primitive.D{{Key: "_id", Value: id}}, client)
+	err = database.DeleteDeviceDB(primitive.D{{Key: "_id", Value: id}}, client, false)
 	if err != nil {
 		ErrorMsg.Err = err.Error()
 		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
@@ -403,7 +403,7 @@ func HandleDeleteDevices(w http.ResponseWriter, r *http.Request, client *mongo.C
 		return err
 	}
 
-	err = database.DeleteDevicesDB(bson.D{{}}, client)
+	err = database.DeleteDeviceDB(bson.D{{}}, client, true)
 	if err != nil {
 		ErrorMsg.Err = err.Error()
 		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)

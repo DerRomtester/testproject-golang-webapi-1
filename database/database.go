@@ -69,32 +69,18 @@ func GetDeviceDB(filter bson.D, client *mongo.Client) (model.Root, error) {
 	return devices, nil
 }
 
-func DeleteDeviceDB(filter bson.D, client *mongo.Client) error {
+func DeleteDeviceDB(filter bson.D, client *mongo.Client, deleteMany bool) error {
 	err := ClientStatusDB(client)
 	if err != nil {
 		return err
 	}
 
 	collection := client.Database("devices-db").Collection("Devices")
-	if filter == nil {
-		err := errors.New("device id must be specified")
-		return err
-	}
+	if !deleteMany && filter == nil {	
+			err := errors.New("device id must be specified")
+			return err
+	} 
 
-	_, err = collection.DeleteMany(context.TODO(), filter)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func DeleteDevicesDB(filter bson.D, client *mongo.Client) error {
-	err := ClientStatusDB(client)
-	if err != nil {
-		return err
-	}
-
-	collection := client.Database("devices-db").Collection("Devices")
 	_, err = collection.DeleteMany(context.TODO(), filter)
 	if err != nil {
 		return err
