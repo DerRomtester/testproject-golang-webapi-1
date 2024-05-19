@@ -1,6 +1,6 @@
 package model
 
-type Root struct {
+type Devices struct {
 	Devices []Device `json:"devices"`
 }
 

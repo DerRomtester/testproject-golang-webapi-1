@@ -29,7 +29,7 @@ func TestCheckAuthValidJson_Success(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	if apiError.Err != "" {
+	if apiError.Message != "" {
 		t.Errorf("Unexpected API error: %v", apiError)
 	}
 
@@ -51,8 +51,8 @@ func TestCheckAuthValidJson_InvalidJson(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for invalid JSON")
 	}
-	if apiError.Err != "structure of request is wrong" {
-		t.Errorf("Expected specific API error message, got: %v", apiError.Err)
+	if apiError.Message != "structure of request is wrong" {
+		t.Errorf("Expected specific API error message, got: %v", apiError.Message)
 	}
 }
 

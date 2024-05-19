@@ -3,128 +3,185 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/DerRomtester/testproject-golang-webapi-1/database"
+	"github.com/DerRomtester/testproject-golang-webapi-1/internal/database"
+	"github.com/DerRomtester/testproject-golang-webapi-1/internal/session"
 	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	ErrorMsg                model.APIError
-	ErrWrongStructure       = "structure of request is wrong"
-	ErrAlreadyAuthenticated = "client already authenticated"
-	ErrNotAuthenticated     = "not authenticated"
-	ErrSessionNotExist      = "session does not exist"
-	ErrSessionExpired       = "session expired"
-	ErrNoCookie             = "no session cookie"
-	ErrNoDeviceID           = "deviceID needs to be specified"
-	ErrDatabase             = "db error"
+	ErrWrongStructure       = APIError{Code: 400, Message: "strucutre of request is wrong"}
+	ErrAlreadyAuthenticated = APIError{Code: 409, Message: "client already authenticated"}
+	ErrNotAuthenticated     = APIError{Code: 401, Message: "not authenticated"}
+	ErrSessionNotExist      = APIError{Code: 401, Message: "session does not exist"}
+	ErrSessionExpired       = APIError{Code: 401, Message: "session expired"}
+	ErrNoCookie             = APIError{Code: 401, Message: "no session cookie"}
+	ErrNoDeviceID           = APIError{Code: 400, Message: "deviceID needs to be specified"}
+	ErrDatabase             = APIError{Code: 500, Message: "db error"}
+	ErrHashingPW            = APIError{Code: 401, Message: "failed to hash password"}
 )
 
-type Authorization interface {
-	CheckAuth(r *http.Request) (model.APIError, error)
-	CheckAuthValidJson(r *http.Request) (model.UserCredentials, model.APIError, error)
+type APIError struct {
+	Code    int    `json:"code"`
+	Message string `json:"error"`
 }
 
-func CheckAuthValidJson(r *http.Request) (model.UserCredentials, model.APIError, error) {
+type ServerConfig struct {
+	Domain string
+	Port   string
+}
+
+type Server struct {
+	Server *http.ServeMux
+}
+
+func (e *APIError) CustomError() error {
+	return fmt.Errorf("%d %s", ErrNotAuthenticated.Code, ErrNotAuthenticated.Message)
+}
+
+func (s *ServerConfig) GetHost() *string {
+	return &s.Domain
+}
+
+func (s *ServerConfig) GetDomain() *string {
+	return &s.Port
+}
+
+func (s *ServerConfig) Run(mg database.DBClient) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /v1/auth", func(w http.ResponseWriter, r *http.Request) {
+		HandlePutLogout(w, r, mg)
+	})
+
+	mux.HandleFunc("POST /v1/auth", func(w http.ResponseWriter, r *http.Request) {
+		HandlePostLogin(w, r, mg)
+	})
+
+	mux.HandleFunc("GET /v1/devices", func(w http.ResponseWriter, r *http.Request) {
+		HandleGetDevices(w, r, mg)
+	})
+
+	mux.HandleFunc("POST /v1/devices", func(w http.ResponseWriter, r *http.Request) {
+		HandlePostDevices(w, r, mg)
+	})
+
+	mux.HandleFunc("DELETE /v1/devices", func(w http.ResponseWriter, r *http.Request) {
+		HandleDeleteDevices(w, r, mg)
+	})
+
+	mux.HandleFunc("GET /v1/device/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		HandleGetDeviceByID(w, r, mg, id)
+	})
+
+	mux.HandleFunc("DELETE /v1/device/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		HandleDeleteDevice(w, r, mg, id)
+	})
+
+	mux.HandleFunc("GET /v1/session", func(w http.ResponseWriter, r *http.Request) {
+		HandleGetSession(w, r, mg)
+	})
+
+	mux.HandleFunc("PUT /v1/refresh", func(w http.ResponseWriter, r *http.Request) {
+		HandlePutRefreshToken(w, r, mg)
+	})
+
+	mux.HandleFunc("POST /v1/user", func(w http.ResponseWriter, r *http.Request) {
+		HandleCreateUser(w, r, mg)
+	})
+
+	http.ListenAndServe(s.Domain+s.Port, mux)
+}
+
+func CheckAuthValidJson(r *http.Request) (model.UserCredentials, APIError, error) {
 	var creds model.UserCredentials
-	var msg model.APIError
+	var msg APIError
 	err := json.NewDecoder(r.Body).Decode(&creds)
+
 	if err != nil {
-		msg = model.APIError{
-			Err: ErrWrongStructure,
-		}
-		return creds, msg, err
+		return creds, ErrWrongStructure, err
 	}
+
 	return creds, msg, nil
 }
 
-func HandleCreateUser(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandleCreateUser(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	creds, msg, err := CheckAuthValidJson(r)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusBadRequest)
 		return err
 	}
 
-	if err := database.ClientStatusDB(client); err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+	if err := mg.ClientStatusDB(); err != nil {
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusUnauthorized)
 		return err
 	}
 
-	if err := database.CreateUserDB(creds, client); err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
-		return nil
+	if err := mg.CreateUserDB(creds); err != nil {
+		HTTPJsonMsg(w, err.Error(), http.StatusInternalServerError)
+		return err
 	}
 	return nil
 }
 
-func CheckUserPassword(u model.UserCredentials, c *mongo.Client) error {
-	db, err := database.GetUserDB(u.Username, c)
+func CheckUserPassword(u model.UserCredentials, mg database.DBClient) error {
+	db, err := mg.GetUserDB(u.Username)
 	if err != nil {
 		return err
 	}
 
-	if u.Username == db.Username && u.Password == db.Password {
-		return nil
+	if u != db {
+		return errors.New("username or password do not match")
 	}
-	return errors.New("username or password do not match")
+
+	return nil
 }
 
-func HandlePostLogin(w http.ResponseWriter, r *http.Request, c *mongo.Client) error {
+func HandlePostLogin(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	var (
-		err error
-		msg model.APIError
-	)
-
-	_, err = CheckAuth(r, c)
+	_, err := CheckAuth(r, mg)
 	if err == nil {
-		msg := model.APIError{
-			Err: ErrAlreadyAuthenticated,
-		}
-		HTTPJsonMsg(w, msg, http.StatusAlreadyReported)
-		return errors.New(ErrAlreadyAuthenticated)
+		HTTPJsonMsg(w, ErrAlreadyAuthenticated, http.StatusAlreadyReported)
+		return ErrAlreadyAuthenticated.CustomError()
 	}
 
 	var creds model.UserCredentials
 	// Get the JSON body and decode into UserCredentials
-	creds, msg, err = CheckAuthValidJson(r)
+	creds, msg, err := CheckAuthValidJson(r)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusBadRequest)
 		return err
 	}
 
-	err = CheckUserPassword(creds, c)
+	err = CheckUserPassword(creds, mg)
 	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return errors.New(ErrNotAuthenticated)
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusUnauthorized)
+		return ErrNotAuthenticated.CustomError()
 	}
 
 	sessionToken := uuid.NewString()
 	expiresAt := time.Now().Add(120 * time.Second)
 
-	session := model.UserSession{
+	session := session.UserSession{
 		Username: creds.Username,
 		Expiry:   expiresAt,
 		Token:    sessionToken,
 	}
 
-	err = database.CreateSessionDB(session, c)
+	err = mg.CreateSessionDB(session)
 	if err != nil {
-		ErrorMsg.Err = ErrDatabase
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
-		return errors.New(ErrDatabase)
+		HTTPJsonMsg(w, ErrDatabase, http.StatusInternalServerError)
+		return ErrDatabase.CustomError()
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -136,58 +193,50 @@ func HandlePostLogin(w http.ResponseWriter, r *http.Request, c *mongo.Client) er
 	return nil
 }
 
-func CheckAuth(r *http.Request, client *mongo.Client) (model.APIError, error) {
-	var ErrorMsg model.APIError
+func CheckAuth(r *http.Request, mg database.DBClient) (APIError, error) {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
-			ErrorMsg.Err = ErrNoCookie
-			return ErrorMsg, err
+			return ErrNoCookie, err
 		}
-		return ErrorMsg, err
+		return ErrNoCookie, err
 	}
 	sessionToken := c.Value
-	userSession, err := database.GetTokenDB(sessionToken, client)
+	existingToken, err := mg.GetTokenDB(sessionToken)
 	if err != nil {
-		ErrorMsg.Err = ErrSessionNotExist
-		return ErrorMsg, errors.New(ErrSessionNotExist)
+		return ErrSessionNotExist, ErrSessionNotExist.CustomError()
 	}
 
-	if userSession.IsExpired() {
-		err = database.DeleteTokenDB(sessionToken, client)
+	if existingToken.IsExpired() {
+		err = mg.DeleteTokenDB(*existingToken.GetToken())
 		if err != nil {
-			ErrorMsg.Err = ErrDatabase
-			return ErrorMsg, errors.New(ErrDatabase)
+			return ErrDatabase, ErrDatabase.CustomError()
 		}
-		ErrorMsg.Err = ErrSessionExpired
-		return ErrorMsg, errors.New(ErrSessionExpired)
+		return ErrSessionExpired, ErrSessionNotExist.CustomError()
 	}
-	return ErrorMsg, nil
+	return APIError{}, nil
 }
 
-func HandleGetSession(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandleGetSession(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
-			ErrorMsg.Err = ErrNoCookie
-			HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+			HTTPJsonMsg(w, ErrNoCookie, http.StatusUnauthorized)
 			return err
 		}
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
 	sessionToken := c.Value
-	userSession, err := database.GetTokenDB(sessionToken, client)
+	userSession, err := mg.GetTokenDB(sessionToken)
 	if err != nil {
-		ErrorMsg.Err = ErrSessionNotExist
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		HTTPJsonMsg(w, ErrSessionNotExist, http.StatusUnauthorized)
 		return err
 	}
 
 	if userSession.IsExpired() {
-		database.DeleteTokenDB(sessionToken, client)
-		ErrorMsg.Err = ErrSessionExpired
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		mg.DeleteTokenDB(sessionToken)
+		HTTPJsonMsg(w, ErrSessionExpired, http.StatusUnauthorized)
 		return err
 	}
 
@@ -195,7 +244,7 @@ func HandleGetSession(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 	return nil
 }
 
-func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	c, err := r.Cookie("session_token")
 	if err != nil {
 		if err == http.ErrNoCookie {
@@ -207,27 +256,25 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request, client *mongo
 	}
 	sessionToken := c.Value
 
-	userSession, err := database.GetTokenDB(sessionToken, client)
+	userSession, err := mg.GetTokenDB(sessionToken)
 	if err != nil {
-		ErrorMsg.Err = ErrSessionNotExist
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		HTTPJsonMsg(w, ErrSessionNotExist, http.StatusUnauthorized)
 		return err
 	}
 
 	if userSession.IsExpired() {
-		database.DeleteTokenDB(sessionToken, client)
-		ErrorMsg.Err = ErrSessionExpired
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		mg.DeleteTokenDB(sessionToken)
+		HTTPJsonMsg(w, ErrSessionExpired, http.StatusUnauthorized)
 		return err
 	}
 
 	newSession := userSession.RenewSession(120)
-	err = database.CreateSessionDB(newSession, client)
+	err = mg.CreateSessionDB(newSession)
 	if err != nil {
 		return err
 	}
 
-	database.DeleteTokenDB(sessionToken, client)
+	mg.DeleteTokenDB(sessionToken)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:    "session_token",
@@ -237,15 +284,14 @@ func HandlePutRefreshToken(w http.ResponseWriter, r *http.Request, client *mongo
 	return nil
 }
 
-func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandlePutLogout(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	_, err := CheckAuth(r, client)
+	_, err := CheckAuth(r, mg)
 	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
-		return errors.New(ErrorMsg.Err)
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusBadRequest)
+		return ErrNotAuthenticated.CustomError()
 	}
 
 	c, err := r.Cookie("session_token")
@@ -260,7 +306,7 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 		return err
 	}
 
-	err = database.DeleteTokenDB(sessionToken, client)
+	err = mg.DeleteTokenDB(sessionToken)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return err
@@ -272,7 +318,7 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 		MaxAge: -1,
 	})
 
-	err = database.ClientStatusDB(client)
+	err = mg.ClientStatusDB()
 	if err != nil {
 		return err
 	}
@@ -280,167 +326,152 @@ func HandlePutLogout(w http.ResponseWriter, r *http.Request, client *mongo.Clien
 	return nil
 }
 
-func HandleGetDevices(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandleGetDevices(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r, client)
+	msg, err := CheckAuth(r, mg)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return err
 	}
 
-	err = database.ClientStatusDB(client)
+	err = mg.ClientStatusDB()
 	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return err
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusUnauthorized)
+		return ErrNotAuthenticated.CustomError()
 	}
 
-	var devices model.Root
-	devices, err = database.GetDeviceDB(bson.D{{}}, client)
+	var devices model.Devices
+	devices, err = mg.GetDeviceDB(bson.D{{}})
 	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
 		return err
 	}
 	alldevices, err := json.Marshal(devices)
 	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
 		return err
 	}
 	w.Write(alldevices)
 	return nil
 }
 
-func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, client *mongo.Client, id string) error {
+func HandleGetDeviceByID(w http.ResponseWriter, r *http.Request, mg database.DBClient, id string) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r, client)
+	msg, err := CheckAuth(r, mg)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return nil
 	}
 
-	var devices model.Root
-	err = database.ClientStatusDB(client)
+	var devices model.Devices
+	err = mg.ClientStatusDB()
 	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return err
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusUnauthorized)
+		return ErrNotAuthenticated.CustomError()
 	}
 
 	if id == "" {
-		ErrorMsg.Err = ErrNoDeviceID
-		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
-		return nil
+		HTTPJsonMsg(w, ErrNoDeviceID, http.StatusBadRequest)
+		return ErrNoDeviceID.CustomError()
 	}
 
-	devices, err = database.GetDeviceDB(primitive.D{{Key: "_id", Value: id}}, client)
+	devices, err = mg.GetDeviceDB(primitive.D{{Key: "_id", Value: id}})
 	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
 		return err
 	}
 	singledevice, err := json.Marshal(devices)
 	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
 		return err
 	}
 	w.Write(singledevice)
 	return nil
 }
 
-func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, client *mongo.Client, id string) error {
+func HandleDeleteDevice(w http.ResponseWriter, r *http.Request, mg database.DBClient, id string) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	msg, err := CheckAuth(r, client)
+	msg, err := CheckAuth(r, mg)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return nil
 	}
 
-	err = database.ClientStatusDB(client)
+	err = mg.ClientStatusDB()
 	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return err
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusUnauthorized)
+		return ErrNotAuthenticated.CustomError()
 	}
 
 	if id == "" {
-		ErrorMsg.Err = ErrNoDeviceID
-		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
-		return nil
+		HTTPJsonMsg(w, ErrNoDeviceID, http.StatusBadRequest)
+		return ErrNoDeviceID.CustomError()
 	}
 
-	err = database.DeleteDeviceDB(primitive.D{{Key: "_id", Value: id}}, client, false)
+	err = mg.DeleteDeviceDB(primitive.D{{Key: "_id", Value: id}}, false)
 	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
-		return nil
-	}
-	return nil
-}
-
-func HandleDeleteDevices(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	msg, err := CheckAuth(r, client)
-	if err != nil {
-		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
-		return err
-	}
-
-	err = database.ClientStatusDB(client)
-	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
-		return err
-	}
-
-	err = database.DeleteDeviceDB(bson.D{{}}, client, true)
-	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
 		return err
 	}
 	return nil
 }
 
-func HandlePostDevices(w http.ResponseWriter, r *http.Request, client *mongo.Client) error {
+func HandleDeleteDevices(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	var devices model.Root
 
-	msg, err := CheckAuth(r, client)
+	msg, err := CheckAuth(r, mg)
+	if err != nil {
+		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
+		return err
+	}
+
+	err = mg.ClientStatusDB()
+	if err != nil {
+		HTTPJsonMsg(w, ErrNotAuthenticated, http.StatusUnauthorized)
+		return ErrNotAuthenticated.CustomError()
+	}
+
+	err = mg.DeleteDeviceDB(bson.D{{}}, true)
+	if err != nil {
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
+		return err
+	}
+	return nil
+}
+
+func HandlePostDevices(w http.ResponseWriter, r *http.Request, mg database.DBClient) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var devices model.Devices
+
+	msg, err := CheckAuth(r, mg)
 	if err != nil {
 		HTTPJsonMsg(w, msg, http.StatusUnauthorized)
 		return nil
 	}
 
-	err = database.ClientStatusDB(client)
+	err = mg.ClientStatusDB()
 	if err != nil {
-		ErrorMsg.Err = ErrNotAuthenticated
-		HTTPJsonMsg(w, ErrorMsg, http.StatusUnauthorized)
+		HTTPJsonMsg(w, err, http.StatusUnauthorized)
 		return err
 	}
 
 	err = json.NewDecoder(r.Body).Decode(&devices)
 
 	if err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusBadRequest)
-		return nil
+		HTTPJsonMsg(w, err, http.StatusBadRequest)
+		return err
 	}
 
-	if err := database.WriteDevicesDB(devices, client); err != nil {
-		ErrorMsg.Err = err.Error()
-		HTTPJsonMsg(w, ErrorMsg, http.StatusInternalServerError)
+	if err := mg.WriteDevicesDB(devices); err != nil {
+		HTTPJsonMsg(w, err, http.StatusInternalServerError)
 		return nil
 	}
 	return nil
