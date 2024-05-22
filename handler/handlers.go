@@ -2,12 +2,13 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/DerRomtester/testproject-golang-webapi-1/internal/database"
+	"github.com/DerRomtester/testproject-golang-webapi-1/internal/helper"
 	"github.com/DerRomtester/testproject-golang-webapi-1/internal/session"
 	"github.com/DerRomtester/testproject-golang-webapi-1/model"
 
@@ -98,6 +99,7 @@ func (s *ServerConfig) Run(mg database.DBClient) {
 		HandleCreateUser(w, r, mg)
 	})
 
+	log.Println("starting server on host: ", s.Domain, " Port: ", s.Port)
 	http.ListenAndServe(s.Domain+s.Port, mux)
 }
 
@@ -138,8 +140,10 @@ func CheckUserPassword(u model.UserCredentials, mg database.DBClient) error {
 		return err
 	}
 
-	if u != db {
-		return errors.New("username or password do not match")
+	err = helper.CheckPassword(u.Password, db.Password)
+
+	if err != nil {
+		return err
 	}
 
 	return nil
