@@ -9,5 +9,8 @@ clean:
 	go clean
 
 start-container: 
-	docker-compose build
+	docker compose build
 	docker compose up
+
+stop-container:
+	docker compose down
