@@ -179,13 +179,12 @@ func (mg DBClient) CreateUserDB(user model.UserCredentials) error {
 	}
 
 	err = mg.CheckUserExists(user.Username)
+	if err.Error() == "user found in db" {
+		return err
+	}
 
-	if err != nil {
-		if err.Error() != "mongo: no documents in result" {
-			if err.Error() != "user found in db" {
-				return err
-			}
-		}
+	if (err.Error() != "user found in db") && (err.Error() != "mongo: no documents in result") && (err != nil) {
+		return err
 	}
 
 	collection := mg.Client.Database("users-db").Collection("users")
