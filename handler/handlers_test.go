@@ -40,14 +40,11 @@ func TestCheckAuthValidJson_Success(t *testing.T) {
 }
 
 func TestCheckAuthValidJson_InvalidJson(t *testing.T) {
-	// Create an invalid JSON request body (missing field)
 	invalidBody := []byte("{\"username\": \"test_user\"")
 	req := httptest.NewRequest(http.MethodPost, "/auth", bytes.NewReader(invalidBody))
 
-	// Call the function under test
 	_, apiError, err := handler.CheckAuthValidJson(req)
 
-	// Verify decoding error
 	if err == nil {
 		t.Error("Expected error for invalid JSON")
 	}
