@@ -48,12 +48,6 @@
 
 A small simple REST API project i found from grollmus
 
-## :sparkles: Features ##
-
-:heavy_check_mark: Feature 1;\
-:heavy_check_mark: Feature 2;\
-:heavy_check_mark: Feature 3;
-
 ## :rocket: Technologies ##
 
 The following tools were used in this project:
@@ -63,6 +57,78 @@ The following tools were used in this project:
 ## :white_check_mark: Requirements ##
 
 Before starting :checkered_flag:, you need to have [Git](https://git-scm.com) and [Go](https://go.dev) installed.
+
+## API ##
+Authenticate
+POST http://localhost:23452/v1/auth
+
+Body:
+{
+    "username" : "test_user",
+    "password" : "password123"
+}
+
+==> cookie as result
+
+Create User
+POST http://localhost:23452/v1/user
+{
+    "username" : "test_user",
+    "password" : "password123"
+}
+
+Logout
+PUT http://localhost:23452/v1/auth
+
+
+Get all devices
+GET http://localhost:23452/v1/devices
+
+
+Get device by id
+GET http://localhost:23452/v1/device/ID_HERE
+
+
+Current Session
+http://localhost:23452/v1/session
+
+
+Refresh token and cookie
+PUT http://localhost:23452/v1/refresh
+
+
+Create devices
+POST http://localhost:23452/v1/devices
+
+Body:
+{
+  "devices": [
+    {
+      "id": "1glmLrTZqf9YZleN",
+      "name": "S7-150009",
+      "deviceTypeId": "Beweis",
+      "failsafe": true,
+      "tempMin": 0,
+      "tempMax": 60,
+      "installationPosition": "horizontal",
+      "insertInto19InchCabinet": true,
+      "motionEnable": true,
+      "siplusCatalog": true,
+      "simaticCatalog": true,
+      "rotationAxisNumber": 0,
+      "positionAxisNumber": 0
+    },
+  ]
+}
+
+
+Delete all devices
+DELETE http://localhost:23452/v1/devices
+
+
+Delete device by its id
+DELETE http://localhost:23452/v1/device/1glmLrTZqf9YZleN
+
 
 ## :checkered_flag: Starting ##
 
@@ -74,15 +140,14 @@ $ git clone https://github.com/DerRomtester/testproject-golang-webapi-1.git
 $ cd testproject-golang-webapi-1
 
 # Run the project 
-# The server will initialize in the <http://localhost:8080>
-$ make run
+# The server will initialize in the <http://localhost:23452>
+$ make start-container
 
 # Build the Binary
 $ mkdir bin
 $ make build
 
 ```
-
 
 Made with :heart: by <a href="https://github.com/DerRomtester" target="_blank">DerRomtester</a>
 
