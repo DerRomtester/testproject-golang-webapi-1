@@ -4,5 +4,5 @@ DatabaseConnection:
   Timeout: 30
 
 Server: 
-  Host: "localhost"
+  Domain: "localhost"
   Port: ":8080"

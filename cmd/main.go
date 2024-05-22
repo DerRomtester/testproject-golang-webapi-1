@@ -30,7 +30,7 @@ func GetConfig() (handler.ServerConfig, database.DatabaseConnection) {
 	}
 
 	srv := handler.ServerConfig{
-		Domain: viper.GetString("Server.Host"),
+		Domain: viper.GetString("Server.Domain"),
 		Port:   viper.GetString("Server.Port"),
 	}
 	return srv, db
