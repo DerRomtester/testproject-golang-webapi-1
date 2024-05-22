@@ -4,6 +4,7 @@ go 1.22.2
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/magiconair/properties v1.8.7
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
 	go.mongodb.org/mongo-driver v1.15.0
@@ -16,7 +17,6 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
-	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
