@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	ErrWrongStructure       = APIError{Code: 400, Message: "strucutre of request is wrong"}
+	ErrWrongStructure       = APIError{Code: 400, Message: "structure of request is wrong"}
 	ErrAlreadyAuthenticated = APIError{Code: 409, Message: "client already authenticated"}
 	ErrNotAuthenticated     = APIError{Code: 401, Message: "not authenticated"}
 	ErrSessionNotExist      = APIError{Code: 401, Message: "session does not exist"}
